@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Search, Plus, Mail, Phone, FileText, Pencil, Trash2 } from 'lucide-react'
+import Link from 'next/link'
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Button } from '@/components/ui/button'
@@ -34,13 +35,6 @@ export default function CustomersPage() {
     const q = searchQuery.toLowerCase()
     return c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || c.company.toLowerCase().includes(q)
   })
-
-  const openCreate = () => {
-    setEditing(null)
-    setForm(emptyCustomer())
-    setErrors({})
-    setModalOpen(true)
-  }
 
   const openEdit = (c: Customer) => {
     setEditing(c)
@@ -101,9 +95,11 @@ export default function CustomersPage() {
             <h1 className="text-xl font-bold tracking-tight md:text-2xl">Clients</h1>
             <p className="text-sm text-muted-foreground">{customers.length} clients enregistrés</p>
           </div>
-          <Button className="rounded-full px-4 md:px-6" onClick={openCreate}>
-            <Plus className="mr-0 h-4 w-4 md:mr-2" />
-            <span className="hidden md:inline">Nouveau client</span>
+          <Button className="rounded-full px-4 md:px-6" asChild>
+            <Link href="/customers/new">
+              <Plus className="mr-0 h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">Nouveau client</span>
+            </Link>
           </Button>
         </div>
 
