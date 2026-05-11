@@ -19,7 +19,7 @@ export const defaultSettings: CompanySettings = {
   currency: 'XOF',
   paymentTerms: 30,
   invoicePrefix: 'INV-',
-  startingNumber: 21,
+  startingNumber: 1,
   taxRate: 18,
 }
 
