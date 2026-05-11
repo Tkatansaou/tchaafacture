@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, Save, Send } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Save, Download } from 'lucide-react'
 import Link from 'next/link'
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
@@ -74,7 +74,7 @@ export default function NewInvoicePage() {
   const removeLine = (key: string) =>
     setLines((p) => (p.length > 1 ? p.filter((l) => l._key !== key) : p))
 
-  const handleSubmit = (status: 'draft' | 'sent') => {
+  const handleSubmit = (status: 'draft' | 'sent', download = false) => {
     if (!customerId) { alert('Veuillez sélectionner un client.'); return }
     if (lines.every((l) => !l.description.trim())) { alert('Ajoutez au moins une ligne.'); return }
     setSaving(true)
@@ -93,7 +93,11 @@ export default function NewInvoicePage() {
       items: lines.map(({ _key: _k, ...rest }) => rest),
     }
     addInvoice(invoice)
-    router.push('/invoices')
+    if (download) {
+      router.push(`/invoices/${invoiceNumber}?print=true`)
+    } else {
+      router.push('/invoices')
+    }
   }
 
   return (
@@ -115,8 +119,8 @@ export default function NewInvoicePage() {
             <Button variant="outline" onClick={() => handleSubmit('draft')} disabled={saving}>
               <Save className="mr-2 h-4 w-4" />Brouillon
             </Button>
-            <Button onClick={() => handleSubmit('sent')} disabled={saving} className="rounded-full px-6">
-              <Send className="mr-2 h-4 w-4" />Envoyer
+            <Button onClick={() => handleSubmit('sent', true)} disabled={saving} className="rounded-full px-6">
+              <Download className="mr-2 h-4 w-4" />Enregistrer
             </Button>
           </div>
         </div>
@@ -312,8 +316,8 @@ export default function NewInvoicePage() {
           <Button variant="outline" onClick={() => handleSubmit('draft')} disabled={saving}>
             <Save className="mr-2 h-4 w-4" />Enregistrer brouillon
           </Button>
-          <Button onClick={() => handleSubmit('sent')} disabled={saving} className="rounded-full px-6">
-            <Send className="mr-2 h-4 w-4" />Envoyer la facture
+          <Button onClick={() => handleSubmit('sent', true)} disabled={saving} className="rounded-full px-6">
+            <Download className="mr-2 h-4 w-4" />Enregistrer & télécharger
           </Button>
         </div>
       </div>

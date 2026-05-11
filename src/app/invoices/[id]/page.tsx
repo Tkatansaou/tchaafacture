@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Pencil, Trash2, Save, Send, Plus, Printer } from 'lucide-react'
 import Link from 'next/link'
@@ -36,6 +36,13 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const TAX_RATE = invoice?.taxRate ?? settings.taxRate ?? 18
 
   const [editing, setEditing] = useState(searchParams.get('edit') === 'true')
+
+  useEffect(() => {
+    if (searchParams.get('print') === 'true' && invoice) {
+      const timer = setTimeout(() => window.print(), 600)
+      return () => clearTimeout(timer)
+    }
+  }, [invoice, searchParams])
 
   // edit state
   const [customerId, setCustomerId] = useState(invoice?.customerId ?? '')
