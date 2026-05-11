@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { useInvoices, useCustomers, useSettings } from '@/lib/store'
+import { useInvoices, useSettings } from '@/lib/store'
 import { formatCurrency, formatDate } from '@/lib/formatters'
 import { InvoiceStatus, InvoiceItem } from '@/lib/types'
 
@@ -30,7 +30,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const router = useRouter()
   const searchParams = useSearchParams()
   const { invoices, updateInvoice, deleteInvoice } = useInvoices()
-  const { customers } = useCustomers()
   const { settings } = useSettings()
 
   const invoice = invoices.find((i) => i.id === params.id)
@@ -38,7 +37,14 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const TAX_RATE = settings.taxRate || 18
 
   const [editing, setEditing] = useState(searchParams.get('edit') === 'true')
-  const [customerId, setCustomerId] = useState(invoice?.customerId ?? '')
+
+  // Champs client (saisie libre)
+  const [customerName, setCustomerName] = useState(invoice?.customerName ?? '')
+  const [customerCompany, setCustomerCompany] = useState(invoice?.customerCompany ?? '')
+  const [customerEmail, setCustomerEmail] = useState(invoice?.customerEmail ?? '')
+  const [customerPhone, setCustomerPhone] = useState(invoice?.customerPhone ?? '')
+  const [customerAddress, setCustomerAddress] = useState(invoice?.customerAddress ?? '')
+
   const [date, setDate] = useState(invoice?.date ?? '')
   const [dueDate, setDueDate] = useState(invoice?.dueDate ?? '')
   const [notes, setNotes] = useState(invoice?.notes ?? '')
@@ -49,8 +55,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const subtotal = lines.reduce((s, l) => s + l.total, 0)
   const tax = Math.round(subtotal * TAX_RATE / 100)
   const total = subtotal + tax
-
-  const selectedCustomer = customers.find((c) => c.id === customerId)
 
   const updateLine = (key: string, field: keyof LineItem, raw: string) => {
     setLines((prev) =>
@@ -71,11 +75,15 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
   const handleSave = (status: 'draft' | 'sent') => {
     if (!invoice) return
-    if (!customerId) { alert('Veuillez sélectionner un client.'); return }
+    if (!customerName.trim()) { alert('Veuillez saisir le nom du client.'); return }
     updateInvoice({
       ...invoice,
-      customerId,
-      customerName: selectedCustomer?.name ?? invoice.customerName,
+      customerId: '',
+      customerName: customerName.trim(),
+      customerCompany: customerCompany.trim(),
+      customerEmail: customerEmail.trim(),
+      customerPhone: customerPhone.trim(),
+      customerAddress: customerAddress.trim(),
       date, dueDate, notes, subtotal, tax,
       taxRate: TAX_RATE, amount: total, status,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -98,7 +106,11 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
   const startEdit = () => {
     if (!invoice) return
-    setCustomerId(invoice.customerId)
+    setCustomerName(invoice.customerName)
+    setCustomerCompany(invoice.customerCompany ?? '')
+    setCustomerEmail(invoice.customerEmail ?? '')
+    setCustomerPhone(invoice.customerPhone ?? '')
+    setCustomerAddress(invoice.customerAddress ?? '')
     setDate(invoice.date)
     setDueDate(invoice.dueDate)
     setNotes(invoice.notes)
@@ -117,8 +129,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       </DashboardLayout>
     )
   }
-
-  const invoiceCustomer = customers.find((c) => c.id === invoice.customerId)
 
   return (
     <DashboardLayout>
@@ -200,14 +210,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                   Facturer à
                 </p>
                 <p className="font-semibold">{invoice.customerName}</p>
-                {invoiceCustomer && (
-                  <div className="mt-0.5 space-y-0.5 text-sm text-muted-foreground">
-                    {invoiceCustomer.company && <p>{invoiceCustomer.company}</p>}
-                    {invoiceCustomer.email && <p>{invoiceCustomer.email}</p>}
-                    {invoiceCustomer.phone && <p>{invoiceCustomer.phone}</p>}
-                    {invoiceCustomer.address && <p>{invoiceCustomer.address}</p>}
-                  </div>
-                )}
+                <div className="mt-0.5 space-y-0.5 text-sm text-muted-foreground">
+                  {invoice.customerCompany && <p>{invoice.customerCompany}</p>}
+                  {invoice.customerEmail && <p>{invoice.customerEmail}</p>}
+                  {invoice.customerPhone && <p>{invoice.customerPhone}</p>}
+                  {invoice.customerAddress && <p>{invoice.customerAddress}</p>}
+                </div>
               </div>
 
               <hr className="my-6" />
@@ -280,24 +288,34 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardContent className="p-5 space-y-3">
-                  <p className="font-semibold">Client</p>
-                  <select
-                    value={customerId}
-                    onChange={(e) => setCustomerId(e.target.value)}
-                    className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  >
-                    <option value="">— Sélectionner un client —</option>
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name} — {c.company}</option>
-                    ))}
-                  </select>
-                  {selectedCustomer && (
-                    <div className="rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground space-y-0.5">
-                      <p className="font-medium text-foreground">{selectedCustomer.company}</p>
-                      <p>{selectedCustomer.email}</p>
-                      <p>{selectedCustomer.address}</p>
+                  <p className="font-semibold">Informations client</p>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium">Nom complet *</label>
+                    <Input placeholder="Ex : Jean Martin" value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium">Entreprise</label>
+                    <Input placeholder="Ex : Ma Société SARL" value={customerCompany}
+                      onChange={(e) => setCustomerCompany(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium">Email</label>
+                    <Input type="email" placeholder="jean@exemple.com" value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium">Téléphone</label>
+                      <Input type="tel" placeholder="+228 90 00 00 00" value={customerPhone}
+                        onChange={(e) => setCustomerPhone(e.target.value)} />
                     </div>
-                  )}
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium">Adresse</label>
+                      <Input placeholder="Rue, Ville" value={customerAddress}
+                        onChange={(e) => setCustomerAddress(e.target.value)} />
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
 

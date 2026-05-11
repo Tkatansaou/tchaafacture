@@ -37,6 +37,10 @@ export interface Invoice {
   id: string
   customerId: string
   customerName: string
+  customerCompany: string
+  customerEmail: string
+  customerPhone: string
+  customerAddress: string
   date: string
   dueDate: string
   subtotal: number

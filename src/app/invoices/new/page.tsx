@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useInvoices, useCustomers, useSettings } from '@/lib/store'
+import { useInvoices, useSettings } from '@/lib/store'
 import { formatCurrency } from '@/lib/formatters'
 import { InvoiceItem, Invoice } from '@/lib/types'
 
@@ -39,13 +39,18 @@ const emptyLine = (): LineItem => ({
 export default function NewInvoicePage() {
   const router = useRouter()
   const { invoices, addInvoice, nextInvoiceNumber } = useInvoices()
-  const { customers } = useCustomers()
   const { settings } = useSettings()
 
   const TAX_RATE = settings.taxRate || 18
   const invoiceNumber = useMemo(() => nextInvoiceNumber(), [invoices])
 
-  const [customerId, setCustomerId] = useState('')
+  // Informations client (saisie libre)
+  const [customerName, setCustomerName] = useState('')
+  const [customerCompany, setCustomerCompany] = useState('')
+  const [customerEmail, setCustomerEmail] = useState('')
+  const [customerPhone, setCustomerPhone] = useState('')
+  const [customerAddress, setCustomerAddress] = useState('')
+
   const [date, setDate] = useState(today())
   const [dueDate, setDueDate] = useState(addDays(today(), 30))
   const [notes, setNotes] = useState('')
@@ -78,17 +83,19 @@ export default function NewInvoicePage() {
   const removeLine = (key: string) =>
     setLines((prev) => (prev.length > 1 ? prev.filter((l) => l._key !== key) : prev))
 
-  const selectedCustomer = customers.find((c) => c.id === customerId)
-
   const handleSubmit = (status: 'draft' | 'sent') => {
-    if (!customerId) { alert('Veuillez sélectionner un client.'); return }
+    if (!customerName.trim()) { alert('Veuillez saisir le nom du client.'); return }
     if (lines.every((l) => !l.description)) { alert('Ajoutez au moins une ligne.'); return }
 
     setSaving(true)
     const invoice: Invoice = {
       id: invoiceNumber,
-      customerId,
-      customerName: selectedCustomer?.name ?? '',
+      customerId: '',
+      customerName: customerName.trim(),
+      customerCompany: customerCompany.trim(),
+      customerEmail: customerEmail.trim(),
+      customerPhone: customerPhone.trim(),
+      customerAddress: customerAddress.trim(),
       date,
       dueDate,
       subtotal,
@@ -138,26 +145,49 @@ export default function NewInvoicePage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <label className="mb-1.5 block text-sm font-medium">Client *</label>
-                <select
-                  value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
-                  className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                  <option value="">— Sélectionner un client —</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name} — {c.company}</option>
-                  ))}
-                </select>
+                <label className="mb-1.5 block text-sm font-medium">Nom complet *</label>
+                <Input
+                  placeholder="Ex : Jean Martin"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                />
               </div>
-              {selectedCustomer && (
-                <div className="rounded-lg bg-muted/40 p-3 text-sm space-y-0.5 text-muted-foreground">
-                  <p className="font-medium text-foreground">{selectedCustomer.company}</p>
-                  <p>{selectedCustomer.email}</p>
-                  <p>{selectedCustomer.phone}</p>
-                  <p>{selectedCustomer.address}</p>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Entreprise</label>
+                <Input
+                  placeholder="Ex : Ma Société SARL"
+                  value={customerCompany}
+                  onChange={(e) => setCustomerCompany(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Email</label>
+                <Input
+                  type="email"
+                  placeholder="Ex : jean@exemple.com"
+                  value={customerEmail}
+                  onChange={(e) => setCustomerEmail(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">Téléphone</label>
+                  <Input
+                    type="tel"
+                    placeholder="+228 90 00 00 00"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                  />
                 </div>
-              )}
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">Adresse</label>
+                  <Input
+                    placeholder="Rue, Ville"
+                    value={customerAddress}
+                    onChange={(e) => setCustomerAddress(e.target.value)}
+                  />
+                </div>
+              </div>
             </CardContent>
           </Card>
 
