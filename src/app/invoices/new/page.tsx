@@ -40,10 +40,10 @@ export default function NewInvoicePage() {
   const { customers } = useCustomers()
   const { settings } = useSettings()
 
-  const TAX_RATE = settings.taxRate || 18
   const invoiceNumber = useMemo(() => nextInvoiceNumber(), [invoices])
 
   const [customerId, setCustomerId] = useState('')
+  const [taxRate, setTaxRate] = useState(settings.taxRate || 18)
   const [date, setDate] = useState(today())
   const [dueDate, setDueDate] = useState(addDays(today(), settings.paymentTerms || 30))
   const [notes, setNotes] = useState('')
@@ -53,7 +53,7 @@ export default function NewInvoicePage() {
   const selectedCustomer = customers.find((c) => c.id === customerId)
 
   const subtotal = lines.reduce((s, l) => s + l.total, 0)
-  const tax = Math.round(subtotal * TAX_RATE / 100)
+  const tax = Math.round(subtotal * taxRate / 100)
   const total = subtotal + tax
 
   const updateLine = (key: string, field: keyof LineItem, raw: string) => {
@@ -87,7 +87,7 @@ export default function NewInvoicePage() {
       customerPhone: selectedCustomer?.phone ?? '',
       customerAddress: selectedCustomer?.address ?? '',
       date, dueDate, subtotal, tax,
-      taxRate: TAX_RATE, amount: total,
+      taxRate, amount: total,
       status, notes,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       items: lines.map(({ _key: _k, ...rest }) => rest),
@@ -281,9 +281,17 @@ export default function NewInvoicePage() {
                 <span className="text-muted-foreground">Sous-total HT</span>
                 <span className="font-medium">{formatCurrency(subtotal)}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">TVA {TAX_RATE}%</span>
-                <span className="font-medium">{formatCurrency(tax)}</span>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground shrink-0">TVA (%)</span>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number" min="0" max="100"
+                    value={taxRate}
+                    onChange={(e) => setTaxRate(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+                    className="h-8 w-20 text-right text-sm"
+                  />
+                  <span className="w-24 text-right font-medium">{formatCurrency(tax)}</span>
+                </div>
               </div>
               <div className="flex justify-between rounded-lg bg-primary/5 px-3 py-2 text-base font-bold">
                 <span>Total TTC</span>
