@@ -5,9 +5,9 @@ import { Invoice, Customer, CompanySettings } from './types'
 import { mockInvoices, mockCustomers } from './mock-data'
 
 const KEYS = {
-  invoices: 'tf_invoices_v2',
-  customers: 'tf_customers_v2',
-  settings: 'tf_settings_v2',
+  invoices: 'tf_invoices_v3',
+  customers: 'tf_customers_v3',
+  settings: 'tf_settings_v3',
 }
 
 export const defaultSettings: CompanySettings = {
@@ -19,7 +19,7 @@ export const defaultSettings: CompanySettings = {
   currency: 'XOF',
   paymentTerms: 30,
   invoicePrefix: 'INV-',
-  startingNumber: 1,
+  startingNumber: 21,
   taxRate: 18,
 }
 

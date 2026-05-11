@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useInvoices, useSettings } from '@/lib/store'
+import { useInvoices, useCustomers, useSettings } from '@/lib/store'
 import { formatCurrency } from '@/lib/formatters'
 import { InvoiceItem, Invoice } from '@/lib/types'
 
@@ -28,9 +28,7 @@ function uid() {
   return Math.random().toString(36).slice(2, 10)
 }
 
-interface LineItem extends InvoiceItem {
-  _key: string
-}
+interface LineItem extends InvoiceItem { _key: string }
 
 const emptyLine = (): LineItem => ({
   _key: uid(), description: '', quantity: 1, unitPrice: 0, total: 0,
@@ -39,72 +37,58 @@ const emptyLine = (): LineItem => ({
 export default function NewInvoicePage() {
   const router = useRouter()
   const { invoices, addInvoice, nextInvoiceNumber } = useInvoices()
+  const { customers } = useCustomers()
   const { settings } = useSettings()
 
+  const TAX_RATE = settings.taxRate || 18
   const invoiceNumber = useMemo(() => nextInvoiceNumber(), [invoices])
 
-  const [taxRate, setTaxRate] = useState(settings.taxRate || 18)
-
-  // Informations client (saisie libre)
-  const [customerName, setCustomerName] = useState('')
-  const [customerCompany, setCustomerCompany] = useState('')
-  const [customerEmail, setCustomerEmail] = useState('')
-  const [customerPhone, setCustomerPhone] = useState('')
-  const [customerAddress, setCustomerAddress] = useState('')
-
+  const [customerId, setCustomerId] = useState('')
   const [date, setDate] = useState(today())
-  const [dueDate, setDueDate] = useState(addDays(today(), 30))
+  const [dueDate, setDueDate] = useState(addDays(today(), settings.paymentTerms || 30))
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState<LineItem[]>([emptyLine()])
   const [saving, setSaving] = useState(false)
 
+  const selectedCustomer = customers.find((c) => c.id === customerId)
+
   const subtotal = lines.reduce((s, l) => s + l.total, 0)
-  const tax = Math.round(subtotal * taxRate / 100)
+  const tax = Math.round(subtotal * TAX_RATE / 100)
   const total = subtotal + tax
 
   const updateLine = (key: string, field: keyof LineItem, raw: string) => {
     setLines((prev) =>
       prev.map((l) => {
         if (l._key !== key) return l
-        const updated = { ...l }
-        if (field === 'description') {
-          updated.description = raw
-        } else if (field === 'quantity') {
-          updated.quantity = Math.max(0, Number(raw) || 0)
-        } else if (field === 'unitPrice') {
-          updated.unitPrice = Math.max(0, Number(raw) || 0)
-        }
-        updated.total = updated.quantity * updated.unitPrice
-        return updated
+        const u = { ...l }
+        if (field === 'description') u.description = raw
+        else if (field === 'quantity') u.quantity = Math.max(0, Number(raw) || 0)
+        else if (field === 'unitPrice') u.unitPrice = Math.max(0, Number(raw) || 0)
+        u.total = u.quantity * u.unitPrice
+        return u
       })
     )
   }
 
-  const addLine = () => setLines((prev) => [...prev, emptyLine()])
+  const addLine = () => setLines((p) => [...p, emptyLine()])
   const removeLine = (key: string) =>
-    setLines((prev) => (prev.length > 1 ? prev.filter((l) => l._key !== key) : prev))
+    setLines((p) => (p.length > 1 ? p.filter((l) => l._key !== key) : p))
 
   const handleSubmit = (status: 'draft' | 'sent') => {
-    if (!customerName.trim()) { alert('Veuillez saisir le nom du client.'); return }
-    if (lines.every((l) => !l.description)) { alert('Ajoutez au moins une ligne.'); return }
-
+    if (!customerId) { alert('Veuillez sélectionner un client.'); return }
+    if (lines.every((l) => !l.description.trim())) { alert('Ajoutez au moins une ligne.'); return }
     setSaving(true)
     const invoice: Invoice = {
       id: invoiceNumber,
-      customerId: '',
-      customerName: customerName.trim(),
-      customerCompany: customerCompany.trim(),
-      customerEmail: customerEmail.trim(),
-      customerPhone: customerPhone.trim(),
-      customerAddress: customerAddress.trim(),
-      date,
-      dueDate,
-      subtotal,
-      tax,
-      taxRate,
-      amount: total,
-      status,
-      notes,
+      customerId,
+      customerName: selectedCustomer?.name ?? '',
+      customerCompany: selectedCustomer?.company ?? '',
+      customerEmail: selectedCustomer?.email ?? '',
+      customerPhone: selectedCustomer?.phone ?? '',
+      customerAddress: selectedCustomer?.address ?? '',
+      date, dueDate, subtotal, tax,
+      taxRate: TAX_RATE, amount: total,
+      status, notes,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       items: lines.map(({ _key: _k, ...rest }) => rest),
     }
@@ -115,6 +99,7 @@ export default function NewInvoicePage() {
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-4xl space-y-6">
+
         {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
@@ -128,12 +113,10 @@ export default function NewInvoicePage() {
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => handleSubmit('draft')} disabled={saving}>
-              <Save className="mr-2 h-4 w-4" />
-              Brouillon
+              <Save className="mr-2 h-4 w-4" />Brouillon
             </Button>
             <Button onClick={() => handleSubmit('sent')} disabled={saving} className="rounded-full px-6">
-              <Send className="mr-2 h-4 w-4" />
-              Envoyer
+              <Send className="mr-2 h-4 w-4" />Envoyer
             </Button>
           </div>
         </div>
@@ -146,49 +129,34 @@ export default function NewInvoicePage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <label className="mb-1.5 block text-sm font-medium">Nom complet *</label>
-                <Input
-                  placeholder="Ex : Jean Martin"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                />
+                <label className="mb-1.5 block text-sm font-medium">Client *</label>
+                <select
+                  value={customerId}
+                  onChange={(e) => setCustomerId(e.target.value)}
+                  className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="">— Sélectionner un client —</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}{c.company ? ` — ${c.company}` : ''}</option>
+                  ))}
+                </select>
               </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">Entreprise</label>
-                <Input
-                  placeholder="Ex : Ma Société SARL"
-                  value={customerCompany}
-                  onChange={(e) => setCustomerCompany(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium">Email</label>
-                <Input
-                  type="email"
-                  placeholder="Ex : jean@exemple.com"
-                  value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium">Téléphone</label>
-                  <Input
-                    type="tel"
-                    placeholder="+228 90 00 00 00"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                  />
+              {selectedCustomer && (
+                <div className="rounded-lg bg-muted/40 p-3 text-sm space-y-0.5 text-muted-foreground">
+                  {selectedCustomer.company && <p className="font-medium text-foreground">{selectedCustomer.company}</p>}
+                  {selectedCustomer.email && <p>{selectedCustomer.email}</p>}
+                  {selectedCustomer.phone && <p>{selectedCustomer.phone}</p>}
+                  {selectedCustomer.address && <p>{selectedCustomer.address}</p>}
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium">Adresse</label>
-                  <Input
-                    placeholder="Rue, Ville"
-                    value={customerAddress}
-                    onChange={(e) => setCustomerAddress(e.target.value)}
-                  />
-                </div>
-              </div>
+              )}
+              {customers.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Aucun client.{' '}
+                  <Link href="/customers" className="text-primary underline underline-offset-2">
+                    Créez-en un d&apos;abord.
+                  </Link>
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -203,11 +171,11 @@ export default function NewInvoicePage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium">Date</label>
+                  <label className="mb-1.5 block text-sm font-medium">Date d&apos;émission</label>
                   <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium">Échéance</label>
+                  <label className="mb-1.5 block text-sm font-medium">Date d&apos;échéance</label>
                   <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
                 </div>
               </div>
@@ -215,13 +183,13 @@ export default function NewInvoicePage() {
           </Card>
         </div>
 
-        {/* Line Items */}
+        {/* Lignes de facture */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Lignes de facture</CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Desktop table */}
+            {/* Desktop */}
             <div className="hidden md:block">
               <div className="mb-2 grid grid-cols-[1fr_80px_130px_130px_40px] gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 <span>Description</span>
@@ -251,7 +219,7 @@ export default function NewInvoicePage() {
                       className="text-right"
                     />
                     <div className="flex h-10 items-center justify-end rounded-lg border bg-muted/40 px-3 text-sm font-medium">
-                      {line.total.toLocaleString('fr-FR')}
+                      {Math.round(line.total).toLocaleString('fr-FR')}
                     </div>
                     <button
                       onClick={() => removeLine(line._key)}
@@ -264,7 +232,7 @@ export default function NewInvoicePage() {
               </div>
             </div>
 
-            {/* Mobile cards */}
+            {/* Mobile */}
             <div className="space-y-4 md:hidden">
               {lines.map((line, idx) => (
                 <div key={line._key} className="rounded-lg border p-3 space-y-2">
@@ -293,34 +261,25 @@ export default function NewInvoicePage() {
                   </div>
                   <div className="flex justify-between text-sm font-medium">
                     <span className="text-muted-foreground">Total HT</span>
-                    <span>{line.total.toLocaleString('fr-FR')} FCFA</span>
+                    <span>{Math.round(line.total).toLocaleString('fr-FR')} FCFA</span>
                   </div>
                 </div>
               ))}
             </div>
 
             <Button variant="outline" onClick={addLine} className="mt-4 w-full" size="sm">
-              <Plus className="mr-2 h-4 w-4" />
-              Ajouter une ligne
+              <Plus className="mr-2 h-4 w-4" />Ajouter une ligne
             </Button>
 
-            {/* Totals */}
+            {/* Totaux */}
             <div className="mt-6 ml-auto w-full max-w-xs space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Sous-total HT</span>
                 <span className="font-medium">{formatCurrency(subtotal)}</span>
               </div>
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-muted-foreground shrink-0">TVA (%)</span>
-                <div className="flex items-center gap-1.5">
-                  <Input
-                    type="number" min="0" max="100"
-                    value={taxRate}
-                    onChange={(e) => setTaxRate(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
-                    className="h-8 w-20 text-right text-sm"
-                  />
-                  <span className="font-medium w-24 text-right">{formatCurrency(tax)}</span>
-                </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">TVA {TAX_RATE}%</span>
+                <span className="font-medium">{formatCurrency(tax)}</span>
               </div>
               <div className="flex justify-between rounded-lg bg-primary/5 px-3 py-2 text-base font-bold">
                 <span>Total TTC</span>
@@ -345,7 +304,7 @@ export default function NewInvoicePage() {
           </CardContent>
         </Card>
 
-        {/* Bottom actions */}
+        {/* Actions bas de page */}
         <div className="flex justify-end gap-3 pb-6">
           <Button variant="outline" asChild>
             <Link href="/invoices">Annuler</Link>

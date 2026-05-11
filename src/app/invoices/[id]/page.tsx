@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Pencil, CheckCircle, Trash2, Save, Send, Plus, Printer } from 'lucide-react'
+import { ArrowLeft, Pencil, Trash2, Save, Send, Plus, Printer } from 'lucide-react'
 import Link from 'next/link'
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { useInvoices, useSettings } from '@/lib/store'
+import { useInvoices, useCustomers, useSettings } from '@/lib/store'
 import { formatCurrency, formatDate } from '@/lib/formatters'
 import { InvoiceStatus, InvoiceItem } from '@/lib/types'
 
@@ -23,28 +23,22 @@ const statusLabel: Record<InvoiceStatus, string> = {
 }
 
 function uid() { return Math.random().toString(36).slice(2, 10) }
-
 interface LineItem extends InvoiceItem { _key: string }
 
 export default function InvoiceDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { invoices, updateInvoice, deleteInvoice } = useInvoices()
+  const { customers } = useCustomers()
   const { settings } = useSettings()
 
   const invoice = invoices.find((i) => i.id === params.id)
+  const TAX_RATE = invoice?.taxRate ?? settings.taxRate ?? 18
 
   const [editing, setEditing] = useState(searchParams.get('edit') === 'true')
 
-  const [taxRate, setTaxRate] = useState(invoice?.taxRate ?? settings.taxRate ?? 18)
-
-  // Champs client (saisie libre)
-  const [customerName, setCustomerName] = useState(invoice?.customerName ?? '')
-  const [customerCompany, setCustomerCompany] = useState(invoice?.customerCompany ?? '')
-  const [customerEmail, setCustomerEmail] = useState(invoice?.customerEmail ?? '')
-  const [customerPhone, setCustomerPhone] = useState(invoice?.customerPhone ?? '')
-  const [customerAddress, setCustomerAddress] = useState(invoice?.customerAddress ?? '')
-
+  // edit state
+  const [customerId, setCustomerId] = useState(invoice?.customerId ?? '')
   const [date, setDate] = useState(invoice?.date ?? '')
   const [dueDate, setDueDate] = useState(invoice?.dueDate ?? '')
   const [notes, setNotes] = useState(invoice?.notes ?? '')
@@ -52,8 +46,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     invoice?.items.map((item) => ({ ...item, _key: uid() })) ?? []
   )
 
+  const selectedCustomer = customers.find((c) => c.id === customerId)
   const subtotal = lines.reduce((s, l) => s + l.total, 0)
-  const tax = Math.round(subtotal * taxRate / 100)
+  const tax = Math.round(subtotal * TAX_RATE / 100)
   const total = subtotal + tax
 
   const updateLine = (key: string, field: keyof LineItem, raw: string) => {
@@ -75,21 +70,26 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
   const handleSave = (status: 'draft' | 'sent') => {
     if (!invoice) return
-    if (!customerName.trim()) { alert('Veuillez saisir le nom du client.'); return }
+    if (!customerId) { alert('Veuillez sélectionner un client.'); return }
+    const cust = customers.find((c) => c.id === customerId)
     updateInvoice({
       ...invoice,
-      customerId: '',
-      customerName: customerName.trim(),
-      customerCompany: customerCompany.trim(),
-      customerEmail: customerEmail.trim(),
-      customerPhone: customerPhone.trim(),
-      customerAddress: customerAddress.trim(),
+      customerId,
+      customerName: cust?.name ?? invoice.customerName,
+      customerCompany: cust?.company ?? invoice.customerCompany,
+      customerEmail: cust?.email ?? invoice.customerEmail,
+      customerPhone: cust?.phone ?? invoice.customerPhone,
+      customerAddress: cust?.address ?? invoice.customerAddress,
       date, dueDate, notes, subtotal, tax,
-      taxRate, amount: total, status,
+      taxRate: TAX_RATE, amount: total, status,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       items: lines.map(({ _key: _k, ...rest }) => rest),
     })
     setEditing(false)
+  }
+
+  const changeStatus = (status: InvoiceStatus) => {
+    if (invoice) updateInvoice({ ...invoice, status })
   }
 
   const handleDelete = () => {
@@ -100,21 +100,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     }
   }
 
-  const markPaid = () => {
-    if (invoice) updateInvoice({ ...invoice, status: 'paid' })
-  }
-
   const startEdit = () => {
     if (!invoice) return
-    setCustomerName(invoice.customerName)
-    setCustomerCompany(invoice.customerCompany ?? '')
-    setCustomerEmail(invoice.customerEmail ?? '')
-    setCustomerPhone(invoice.customerPhone ?? '')
-    setCustomerAddress(invoice.customerAddress ?? '')
+    setCustomerId(invoice.customerId)
     setDate(invoice.date)
     setDueDate(invoice.dueDate)
     setNotes(invoice.notes)
-    setTaxRate(invoice.taxRate)
     setLines(invoice.items.map((item) => ({ ...item, _key: uid() })))
     setEditing(true)
   }
@@ -135,7 +126,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     <DashboardLayout>
       <div className="mx-auto max-w-4xl space-y-5">
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" asChild>
@@ -156,11 +147,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                 <Button variant="outline" size="sm" onClick={() => window.print()}>
                   <Printer className="mr-2 h-4 w-4" />Imprimer
                 </Button>
-                {invoice.status !== 'paid' && (
-                  <Button variant="outline" size="sm" onClick={markPaid} className="text-green-600 hover:text-green-700">
-                    <CheckCircle className="mr-2 h-4 w-4" />Marquer payée
-                  </Button>
-                )}
                 <Button variant="outline" size="sm" onClick={startEdit}>
                   <Pencil className="mr-2 h-4 w-4" />Modifier
                 </Button>
@@ -182,12 +168,36 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           </div>
         </div>
 
-        {/* ── VIEW MODE ── */}
+        {/* ── CHANGER LE STATUT ── */}
+        {!editing && (
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm font-medium text-muted-foreground">Changer le statut :</span>
+                {(['draft', 'sent', 'paid', 'overdue'] as InvoiceStatus[]).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => changeStatus(s)}
+                    className={`rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${
+                      invoice.status === s
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-input bg-background text-muted-foreground hover:border-primary hover:text-primary'
+                    }`}
+                  >
+                    {statusLabel[s]}
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── MODE VUE ── */}
         {!editing && (
           <Card className="print:shadow-none print:border-none">
             <CardContent className="p-6 md:p-10">
 
-              {/* Invoice head */}
+              {/* En-tête facture */}
               <div className="flex flex-col gap-6 sm:flex-row sm:justify-between">
                 <div>
                   <p className="text-xl font-bold text-primary">{settings.name || 'Mon Entreprise'}</p>
@@ -205,7 +215,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
               <hr className="my-6" />
 
-              {/* Bill to */}
+              {/* Facturer à */}
               <div>
                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Facturer à
@@ -221,23 +231,15 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
               <hr className="my-6" />
 
-              {/* Line items */}
+              {/* Tableau des lignes */}
               <div className="overflow-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b">
-                      <th className="pb-3 pr-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Description
-                      </th>
-                      <th className="pb-3 pr-4 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground w-14">
-                        Qté
-                      </th>
-                      <th className="pb-3 pr-4 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground w-32">
-                        Prix unit. HT
-                      </th>
-                      <th className="pb-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground w-32">
-                        Total HT
-                      </th>
+                      <th className="pb-3 pr-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">Description</th>
+                      <th className="pb-3 pr-4 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground w-14">Qté</th>
+                      <th className="pb-3 pr-4 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground w-32">Prix unit. HT</th>
+                      <th className="pb-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground w-32">Total HT</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -245,9 +247,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                       <tr key={i}>
                         <td className="py-3 pr-4">{item.description}</td>
                         <td className="py-3 pr-4 text-center text-muted-foreground">{item.quantity}</td>
-                        <td className="py-3 pr-4 text-right text-muted-foreground">
-                          {formatCurrency(item.unitPrice)}
-                        </td>
+                        <td className="py-3 pr-4 text-right text-muted-foreground">{formatCurrency(item.unitPrice)}</td>
                         <td className="py-3 text-right font-medium">{formatCurrency(item.total)}</td>
                       </tr>
                     ))}
@@ -255,7 +255,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                 </table>
               </div>
 
-              {/* Totals */}
+              {/* Totaux */}
               <div className="mt-6 ml-auto w-full max-w-xs space-y-2 border-t pt-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Sous-total HT</span>
@@ -271,7 +271,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                 </div>
               </div>
 
-              {/* Notes */}
               {invoice.notes && (
                 <div className="mt-6 rounded-lg bg-muted/40 p-4">
                   <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Notes</p>
@@ -282,50 +281,41 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           </Card>
         )}
 
-        {/* ── EDIT MODE ── */}
+        {/* ── MODE ÉDITION ── */}
         {editing && (
           <div className="space-y-4">
-            {/* Client + Dates */}
             <div className="grid gap-4 md:grid-cols-2">
+              {/* Client dropdown */}
               <Card>
                 <CardContent className="p-5 space-y-3">
-                  <p className="font-semibold">Informations client</p>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium">Nom complet *</label>
-                    <Input placeholder="Ex : Jean Martin" value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium">Entreprise</label>
-                    <Input placeholder="Ex : Ma Société SARL" value={customerCompany}
-                      onChange={(e) => setCustomerCompany(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium">Email</label>
-                    <Input type="email" placeholder="jean@exemple.com" value={customerEmail}
-                      onChange={(e) => setCustomerEmail(e.target.value)} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium">Téléphone</label>
-                      <Input type="tel" placeholder="+228 90 00 00 00" value={customerPhone}
-                        onChange={(e) => setCustomerPhone(e.target.value)} />
+                  <p className="font-semibold">Client</p>
+                  <select
+                    value={customerId}
+                    onChange={(e) => setCustomerId(e.target.value)}
+                    className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    <option value="">— Sélectionner un client —</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}{c.company ? ` — ${c.company}` : ''}</option>
+                    ))}
+                  </select>
+                  {selectedCustomer && (
+                    <div className="rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground space-y-0.5">
+                      {selectedCustomer.company && <p className="font-medium text-foreground">{selectedCustomer.company}</p>}
+                      {selectedCustomer.email && <p>{selectedCustomer.email}</p>}
+                      {selectedCustomer.address && <p>{selectedCustomer.address}</p>}
                     </div>
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium">Adresse</label>
-                      <Input placeholder="Rue, Ville" value={customerAddress}
-                        onChange={(e) => setCustomerAddress(e.target.value)} />
-                    </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
 
+              {/* Dates */}
               <Card>
                 <CardContent className="p-5 space-y-3">
                   <p className="font-semibold">Dates</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="mb-1.5 block text-sm font-medium">Date</label>
+                      <label className="mb-1.5 block text-sm font-medium">Date d&apos;émission</label>
                       <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                     </div>
                     <div>
@@ -337,7 +327,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </Card>
             </div>
 
-            {/* Lines */}
+            {/* Lignes */}
             <Card>
               <CardContent className="p-5">
                 <p className="mb-4 font-semibold">Lignes de facture</p>
@@ -361,7 +351,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                         <Input type="number" min="0" value={line.unitPrice || ''}
                           onChange={(e) => updateLine(line._key, 'unitPrice', e.target.value)} className="text-right" />
                         <div className="flex h-10 items-center justify-end rounded-lg border bg-muted/40 px-3 text-sm font-medium">
-                          {line.total.toLocaleString('fr-FR')}
+                          {Math.round(line.total).toLocaleString('fr-FR')}
                         </div>
                         <button onClick={() => removeLine(line._key)}
                           className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-500">
@@ -398,13 +388,14 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                       </div>
                       <div className="flex justify-between text-sm font-medium">
                         <span className="text-muted-foreground">Total HT</span>
-                        <span>{line.total.toLocaleString('fr-FR')} FCFA</span>
+                        <span>{Math.round(line.total).toLocaleString('fr-FR')} FCFA</span>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                <Button variant="outline" onClick={() => setLines((p) => [...p, { _key: uid(), description: '', quantity: 1, unitPrice: 0, total: 0 }])}
+                <Button variant="outline"
+                  onClick={() => setLines((p) => [...p, { _key: uid(), description: '', quantity: 1, unitPrice: 0, total: 0 }])}
                   className="mt-4 w-full" size="sm">
                   <Plus className="mr-2 h-4 w-4" />Ajouter une ligne
                 </Button>
@@ -414,17 +405,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                     <span className="text-muted-foreground">Sous-total HT</span>
                     <span className="font-medium">{formatCurrency(subtotal)}</span>
                   </div>
-                  <div className="flex items-center justify-between gap-3 text-sm">
-                    <span className="text-muted-foreground shrink-0">TVA (%)</span>
-                    <div className="flex items-center gap-1.5">
-                      <Input
-                        type="number" min="0" max="100"
-                        value={taxRate}
-                        onChange={(e) => setTaxRate(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
-                        className="h-8 w-20 text-right text-sm"
-                      />
-                      <span className="font-medium w-24 text-right">{formatCurrency(tax)}</span>
-                    </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">TVA {TAX_RATE}%</span>
+                    <span className="font-medium">{formatCurrency(tax)}</span>
                   </div>
                   <div className="flex justify-between rounded-lg bg-primary/5 px-3 py-2 font-bold">
                     <span>Total TTC</span>
