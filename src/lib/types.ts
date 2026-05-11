@@ -1,4 +1,17 @@
-export type InvoiceStatus = 'paid' | 'pending' | 'overdue'
+export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue'
+
+export interface CompanySettings {
+  name: string
+  email: string
+  phone: string
+  address: string
+  logoUrl: string
+  currency: string
+  paymentTerms: number
+  invoicePrefix: string
+  startingNumber: number
+  taxRate: number
+}
 
 export interface Customer {
   id: string
@@ -26,9 +39,13 @@ export interface Invoice {
   customerName: string
   date: string
   dueDate: string
+  subtotal: number
+  tax: number
+  taxRate: number
   amount: number
   status: InvoiceStatus
   items: InvoiceItem[]
+  notes: string
 }
 
 export interface RevenueDataPoint {

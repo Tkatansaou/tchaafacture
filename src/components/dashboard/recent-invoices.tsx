@@ -1,48 +1,53 @@
-import { mockInvoices } from '@/lib/mock-data'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatCurrency, formatDate } from '@/lib/formatters'
-import { InvoiceStatus } from '@/lib/types'
+import { Invoice, InvoiceStatus } from '@/lib/types'
 
-const statusVariant: Record<InvoiceStatus, 'success' | 'warning' | 'danger'> = {
+const statusVariant: Record<InvoiceStatus, 'default' | 'secondary' | 'success' | 'warning' | 'danger' | 'outline'> = {
+  draft: 'outline',
+  sent: 'secondary',
   paid: 'success',
-  pending: 'warning',
   overdue: 'danger',
 }
 
 const statusLabel: Record<InvoiceStatus, string> = {
+  draft: 'Brouillon',
+  sent: 'Envoyée',
   paid: 'Payée',
-  pending: 'En attente',
   overdue: 'En retard',
 }
 
-const recentInvoices = [...mockInvoices]
-  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  .slice(0, 5)
+interface RecentInvoicesProps {
+  invoices: Invoice[]
+}
 
-export function RecentInvoices() {
+export function RecentInvoices({ invoices }: RecentInvoicesProps) {
+  const recent = [...invoices]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 5)
+
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead>Facture</TableHead>
           <TableHead>Client</TableHead>
-          <TableHead>Échéance</TableHead>
-          <TableHead className="text-right">Montant</TableHead>
+          <TableHead className="hidden md:table-cell">Échéance</TableHead>
+          <TableHead className="text-right">Montant TTC</TableHead>
           <TableHead>Statut</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {recentInvoices.map((invoice) => (
+        {recent.map((invoice) => (
           <TableRow key={invoice.id}>
             <TableCell className="font-mono text-xs font-medium">{invoice.id}</TableCell>
             <TableCell className="font-medium">{invoice.customerName}</TableCell>
-            <TableCell className="text-muted-foreground">{formatDate(invoice.dueDate)}</TableCell>
+            <TableCell className="hidden text-muted-foreground md:table-cell">
+              {formatDate(invoice.dueDate)}
+            </TableCell>
             <TableCell className="text-right font-medium">{formatCurrency(invoice.amount)}</TableCell>
             <TableCell>
-              <Badge variant={statusVariant[invoice.status]}>
-                {statusLabel[invoice.status]}
-              </Badge>
+              <Badge variant={statusVariant[invoice.status]}>{statusLabel[invoice.status]}</Badge>
             </TableCell>
           </TableRow>
         ))}

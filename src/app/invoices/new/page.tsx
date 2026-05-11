@@ -1,0 +1,324 @@
+'use client'
+
+import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, Plus, Trash2, Save, Send } from 'lucide-react'
+import Link from 'next/link'
+
+import { DashboardLayout } from '@/components/layout/dashboard-layout'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useInvoices, useCustomers, useSettings } from '@/lib/store'
+import { formatCurrency } from '@/lib/formatters'
+import { InvoiceItem, Invoice } from '@/lib/types'
+
+function today() {
+  return new Date().toISOString().split('T')[0]
+}
+
+function addDays(dateStr: string, days: number) {
+  const d = new Date(dateStr)
+  d.setDate(d.getDate() + days)
+  return d.toISOString().split('T')[0]
+}
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10)
+}
+
+interface LineItem extends InvoiceItem {
+  _key: string
+}
+
+const emptyLine = (): LineItem => ({
+  _key: uid(), description: '', quantity: 1, unitPrice: 0, total: 0,
+})
+
+export default function NewInvoicePage() {
+  const router = useRouter()
+  const { invoices, addInvoice, nextInvoiceNumber } = useInvoices()
+  const { customers } = useCustomers()
+  const { settings } = useSettings()
+
+  const TAX_RATE = settings.taxRate || 18
+  const invoiceNumber = useMemo(() => nextInvoiceNumber(), [invoices])
+
+  const [customerId, setCustomerId] = useState('')
+  const [date, setDate] = useState(today())
+  const [dueDate, setDueDate] = useState(addDays(today(), 30))
+  const [notes, setNotes] = useState('')
+  const [lines, setLines] = useState<LineItem[]>([emptyLine()])
+  const [saving, setSaving] = useState(false)
+
+  const subtotal = lines.reduce((s, l) => s + l.total, 0)
+  const tax = Math.round(subtotal * TAX_RATE / 100)
+  const total = subtotal + tax
+
+  const updateLine = (key: string, field: keyof LineItem, raw: string) => {
+    setLines((prev) =>
+      prev.map((l) => {
+        if (l._key !== key) return l
+        const updated = { ...l }
+        if (field === 'description') {
+          updated.description = raw
+        } else if (field === 'quantity') {
+          updated.quantity = Math.max(0, Number(raw) || 0)
+        } else if (field === 'unitPrice') {
+          updated.unitPrice = Math.max(0, Number(raw) || 0)
+        }
+        updated.total = updated.quantity * updated.unitPrice
+        return updated
+      })
+    )
+  }
+
+  const addLine = () => setLines((prev) => [...prev, emptyLine()])
+  const removeLine = (key: string) =>
+    setLines((prev) => (prev.length > 1 ? prev.filter((l) => l._key !== key) : prev))
+
+  const selectedCustomer = customers.find((c) => c.id === customerId)
+
+  const handleSubmit = (status: 'draft' | 'sent') => {
+    if (!customerId) { alert('Veuillez sélectionner un client.'); return }
+    if (lines.every((l) => !l.description)) { alert('Ajoutez au moins une ligne.'); return }
+
+    setSaving(true)
+    const invoice: Invoice = {
+      id: invoiceNumber,
+      customerId,
+      customerName: selectedCustomer?.name ?? '',
+      date,
+      dueDate,
+      subtotal,
+      tax,
+      taxRate: TAX_RATE,
+      amount: total,
+      status,
+      notes,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      items: lines.map(({ _key: _k, ...rest }) => rest),
+    }
+    addInvoice(invoice)
+    router.push('/invoices')
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="mx-auto max-w-4xl space-y-6">
+        {/* Header */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" asChild>
+              <Link href="/invoices"><ArrowLeft className="h-4 w-4" /></Link>
+            </Button>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">Nouvelle facture</h1>
+              <p className="text-sm text-muted-foreground">N° {invoiceNumber}</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => handleSubmit('draft')} disabled={saving}>
+              <Save className="mr-2 h-4 w-4" />
+              Brouillon
+            </Button>
+            <Button onClick={() => handleSubmit('sent')} disabled={saving} className="rounded-full px-6">
+              <Send className="mr-2 h-4 w-4" />
+              Envoyer
+            </Button>
+          </div>
+        </div>
+
+        {/* Client + Dates */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Informations client</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Client *</label>
+                <select
+                  value={customerId}
+                  onChange={(e) => setCustomerId(e.target.value)}
+                  className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="">— Sélectionner un client —</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name} — {c.company}</option>
+                  ))}
+                </select>
+              </div>
+              {selectedCustomer && (
+                <div className="rounded-lg bg-muted/40 p-3 text-sm space-y-0.5 text-muted-foreground">
+                  <p className="font-medium text-foreground">{selectedCustomer.company}</p>
+                  <p>{selectedCustomer.email}</p>
+                  <p>{selectedCustomer.phone}</p>
+                  <p>{selectedCustomer.address}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Dates & référence</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">N° Facture</label>
+                <Input value={invoiceNumber} readOnly className="bg-muted/40 font-mono" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">Date</label>
+                  <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">Échéance</label>
+                  <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Line Items */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Lignes de facture</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {/* Desktop table */}
+            <div className="hidden md:block">
+              <div className="mb-2 grid grid-cols-[1fr_80px_130px_130px_40px] gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <span>Description</span>
+                <span className="text-center">Qté</span>
+                <span className="text-right">Prix unit. HT</span>
+                <span className="text-right">Total HT</span>
+                <span />
+              </div>
+              <div className="space-y-2">
+                {lines.map((line) => (
+                  <div key={line._key} className="grid grid-cols-[1fr_80px_130px_130px_40px] gap-2 items-center">
+                    <Input
+                      placeholder="Description du service ou produit"
+                      value={line.description}
+                      onChange={(e) => updateLine(line._key, 'description', e.target.value)}
+                    />
+                    <Input
+                      type="number" min="0" placeholder="1"
+                      value={line.quantity || ''}
+                      onChange={(e) => updateLine(line._key, 'quantity', e.target.value)}
+                      className="text-center"
+                    />
+                    <Input
+                      type="number" min="0" placeholder="0"
+                      value={line.unitPrice || ''}
+                      onChange={(e) => updateLine(line._key, 'unitPrice', e.target.value)}
+                      className="text-right"
+                    />
+                    <div className="flex h-10 items-center justify-end rounded-lg border bg-muted/40 px-3 text-sm font-medium">
+                      {line.total.toLocaleString('fr-FR')}
+                    </div>
+                    <button
+                      onClick={() => removeLine(line._key)}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-red-50 hover:text-red-500"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="space-y-4 md:hidden">
+              {lines.map((line, idx) => (
+                <div key={line._key} className="rounded-lg border p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">Ligne {idx + 1}</span>
+                    <button onClick={() => removeLine(line._key)} className="text-red-400">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <Input
+                    placeholder="Description"
+                    value={line.description}
+                    onChange={(e) => updateLine(line._key, 'description', e.target.value)}
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="mb-1 block text-xs text-muted-foreground">Qté</label>
+                      <Input type="number" min="0" value={line.quantity || ''}
+                        onChange={(e) => updateLine(line._key, 'quantity', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-muted-foreground">Prix unit. HT</label>
+                      <Input type="number" min="0" value={line.unitPrice || ''}
+                        onChange={(e) => updateLine(line._key, 'unitPrice', e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="flex justify-between text-sm font-medium">
+                    <span className="text-muted-foreground">Total HT</span>
+                    <span>{line.total.toLocaleString('fr-FR')} FCFA</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <Button variant="outline" onClick={addLine} className="mt-4 w-full" size="sm">
+              <Plus className="mr-2 h-4 w-4" />
+              Ajouter une ligne
+            </Button>
+
+            {/* Totals */}
+            <div className="mt-6 ml-auto w-full max-w-xs space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Sous-total HT</span>
+                <span className="font-medium">{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">TVA {TAX_RATE}%</span>
+                <span className="font-medium">{formatCurrency(tax)}</span>
+              </div>
+              <div className="flex justify-between rounded-lg bg-primary/5 px-3 py-2 text-base font-bold">
+                <span>Total TTC</span>
+                <span className="text-primary">{formatCurrency(total)}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Notes */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Notes & conditions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              placeholder="Conditions de paiement, notes pour le client..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Bottom actions */}
+        <div className="flex justify-end gap-3 pb-6">
+          <Button variant="outline" asChild>
+            <Link href="/invoices">Annuler</Link>
+          </Button>
+          <Button variant="outline" onClick={() => handleSubmit('draft')} disabled={saving}>
+            <Save className="mr-2 h-4 w-4" />Enregistrer brouillon
+          </Button>
+          <Button onClick={() => handleSubmit('sent')} disabled={saving} className="rounded-full px-6">
+            <Send className="mr-2 h-4 w-4" />Envoyer la facture
+          </Button>
+        </div>
+      </div>
+    </DashboardLayout>
+  )
+}
