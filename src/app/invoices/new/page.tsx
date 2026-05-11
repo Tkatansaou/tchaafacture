@@ -41,8 +41,9 @@ export default function NewInvoicePage() {
   const { invoices, addInvoice, nextInvoiceNumber } = useInvoices()
   const { settings } = useSettings()
 
-  const TAX_RATE = settings.taxRate || 18
   const invoiceNumber = useMemo(() => nextInvoiceNumber(), [invoices])
+
+  const [taxRate, setTaxRate] = useState(settings.taxRate || 18)
 
   // Informations client (saisie libre)
   const [customerName, setCustomerName] = useState('')
@@ -58,7 +59,7 @@ export default function NewInvoicePage() {
   const [saving, setSaving] = useState(false)
 
   const subtotal = lines.reduce((s, l) => s + l.total, 0)
-  const tax = Math.round(subtotal * TAX_RATE / 100)
+  const tax = Math.round(subtotal * taxRate / 100)
   const total = subtotal + tax
 
   const updateLine = (key: string, field: keyof LineItem, raw: string) => {
@@ -100,7 +101,7 @@ export default function NewInvoicePage() {
       dueDate,
       subtotal,
       tax,
-      taxRate: TAX_RATE,
+      taxRate,
       amount: total,
       status,
       notes,
@@ -309,9 +310,17 @@ export default function NewInvoicePage() {
                 <span className="text-muted-foreground">Sous-total HT</span>
                 <span className="font-medium">{formatCurrency(subtotal)}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">TVA {TAX_RATE}%</span>
-                <span className="font-medium">{formatCurrency(tax)}</span>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground shrink-0">TVA (%)</span>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    type="number" min="0" max="100"
+                    value={taxRate}
+                    onChange={(e) => setTaxRate(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                    className="h-8 w-20 text-right text-sm"
+                  />
+                  <span className="font-medium w-24 text-right">{formatCurrency(tax)}</span>
+                </div>
               </div>
               <div className="flex justify-between rounded-lg bg-primary/5 px-3 py-2 text-base font-bold">
                 <span>Total TTC</span>
