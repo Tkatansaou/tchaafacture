@@ -1,15 +1,28 @@
-import { Plus, Search, Bell, Menu } from "lucide-react"
-import { Button } from "@/components/ui/button"
+'use client'
+
+import { Plus, Search, Bell, Menu, LogOut } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+import { createClient } from '@/lib/supabase/client'
 
 interface HeaderProps {
   onMenuClick?: () => void
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
+  const router = useRouter()
+
+  const handleSignOut = async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/auth/login')
+    router.refresh()
+  }
+
   return (
     <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:h-20 md:px-8">
       <div className="flex items-center gap-3">
-        {/* Hamburger — mobile only */}
         <button
           onClick={onMenuClick}
           className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:hidden"
@@ -17,7 +30,6 @@ export function Header({ onMenuClick }: HeaderProps) {
           <Menu className="h-5 w-5" />
         </button>
 
-        {/* Search — desktop only */}
         <div className="relative hidden md:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -28,25 +40,25 @@ export function Header({ onMenuClick }: HeaderProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-3 md:gap-6">
-        {/* Create Invoice — icon on mobile, full button on desktop */}
-        <Button className="rounded-full px-3 shadow-sm md:px-6">
-          <Plus className="h-4 w-4 md:mr-2" />
-          <span className="hidden md:inline">Nouvelle facture</span>
+      <div className="flex items-center gap-2 md:gap-4">
+        <Button className="rounded-full px-3 shadow-sm md:px-6" asChild>
+          <Link href="/invoices/new">
+            <Plus className="h-4 w-4 md:mr-2" />
+            <span className="hidden md:inline">Nouvelle facture</span>
+          </Link>
         </Button>
 
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-foreground hover:cursor-pointer">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-foreground">
           <Bell className="h-4 w-4 md:h-5 md:w-5" />
         </div>
 
-        <div className="h-9 w-9 overflow-hidden rounded-full border hover:cursor-pointer">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix"
-            alt="Profile"
-            className="h-full w-full object-cover"
-          />
-        </div>
+        <button
+          onClick={handleSignOut}
+          title="Se déconnecter"
+          className="flex h-9 w-9 items-center justify-center rounded-full border text-muted-foreground hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
       </div>
     </header>
   )

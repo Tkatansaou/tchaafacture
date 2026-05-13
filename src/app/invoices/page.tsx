@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus, Search, Eye, Pencil, Trash2, CheckCircle } from 'lucide-react'
 import Link from 'next/link'
 
@@ -10,9 +10,9 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { useInvoices } from '@/lib/store'
+import { getInvoices, updateInvoiceStatus, deleteInvoice } from '@/lib/actions/invoices'
 import { formatCurrency, formatDate } from '@/lib/formatters'
-import { InvoiceStatus } from '@/lib/types'
+import type { Invoice, InvoiceStatus } from '@/lib/types'
 
 const statusVariant: Record<InvoiceStatus, 'default' | 'secondary' | 'success' | 'warning' | 'danger' | 'outline'> = {
   draft: 'outline',
@@ -39,9 +39,23 @@ const tabs: { value: FilterTab; label: string }[] = [
 ]
 
 export default function InvoicesPage() {
-  const { invoices, updateInvoice, deleteInvoice } = useInvoices()
+  const [invoices, setInvoices] = useState<Invoice[]>([])
   const [activeTab, setActiveTab] = useState<FilterTab>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const load = async () => {
+    try {
+      const data = await getInvoices()
+      setInvoices(data)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
 
   const filtered = invoices
     .filter((inv) => activeTab === 'all' || inv.status === activeTab)
@@ -52,13 +66,15 @@ export default function InvoicesPage() {
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
-  const markPaid = (id: string) => {
-    const inv = invoices.find((i) => i.id === id)
-    if (inv) updateInvoice({ ...inv, status: 'paid' })
+  const markPaid = async (id: string) => {
+    await updateInvoiceStatus(id, 'paid')
+    setInvoices((prev) => prev.map((inv) => inv.id === id ? { ...inv, status: 'paid' } : inv))
   }
 
-  const handleDelete = (id: string) => {
-    if (confirm('Supprimer cette facture ?')) deleteInvoice(id)
+  const handleDelete = async (id: string) => {
+    if (!confirm('Supprimer cette facture ?')) return
+    await deleteInvoice(id)
+    setInvoices((prev) => prev.filter((inv) => inv.id !== id))
   }
 
   return (
@@ -98,7 +114,7 @@ export default function InvoicesPage() {
             <TabsContent key={tab.value} value={tab.value}>
               <div className="rounded-xl border bg-card">
                 <div className="border-b px-4 py-2.5 text-sm text-muted-foreground">
-                  {filtered.length} résultat{filtered.length !== 1 ? 's' : ''}
+                  {loading ? 'Chargement…' : `${filtered.length} résultat${filtered.length !== 1 ? 's' : ''}`}
                 </div>
                 <Table>
                   <TableHeader>
@@ -116,7 +132,7 @@ export default function InvoicesPage() {
                     {filtered.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
-                          Aucune facture trouvée.
+                          {loading ? 'Chargement des factures…' : 'Aucune facture trouvée.'}
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -135,14 +151,10 @@ export default function InvoicesPage() {
                           <TableCell>
                             <div className="flex items-center justify-center gap-0.5">
                               <Button variant="ghost" size="icon" className="h-8 w-8" title="Voir" asChild>
-                                <Link href={`/invoices/${invoice.id}`}>
-                                  <Eye className="h-3.5 w-3.5" />
-                                </Link>
+                                <Link href={`/invoices/${invoice.id}`}><Eye className="h-3.5 w-3.5" /></Link>
                               </Button>
                               <Button variant="ghost" size="icon" className="h-8 w-8" title="Modifier" asChild>
-                                <Link href={`/invoices/${invoice.id}?edit=true`}>
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Link>
+                                <Link href={`/invoices/${invoice.id}?edit=true`}><Pencil className="h-3.5 w-3.5" /></Link>
                               </Button>
                               {invoice.status !== 'paid' && (
                                 <Button

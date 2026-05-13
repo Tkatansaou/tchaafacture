@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Suspense } from 'react'
 import {
@@ -14,10 +15,11 @@ import { RecentInvoices } from '@/components/dashboard/recent-invoices'
 import { CustomerStats } from '@/components/dashboard/customer-stats'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { useInvoices } from '@/lib/store'
+import { getInvoices } from '@/lib/actions/invoices'
+import { getCustomers } from '@/lib/actions/customers'
 import { formatCurrency } from '@/lib/formatters'
+import type { Invoice, Customer } from '@/lib/types'
 
-/* ── Navigation rapide ─────────────────────────────── */
 const quickLinks = [
   {
     href: '/invoices/new',
@@ -54,16 +56,21 @@ const quickLinks = [
   {
     href: '/settings',
     label: 'Paramètres',
-    description: 'Configurer l\'application',
+    description: "Configurer l'application",
     icon: Settings,
     color: 'bg-slate-500/10 text-slate-600',
     border: 'hover:border-slate-200',
   },
 ]
 
-/* ── Page ──────────────────────────────────────────── */
 export default function DashboardPage() {
-  const { invoices } = useInvoices()
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
+
+  useEffect(() => {
+    getInvoices().then(setInvoices).catch(console.error)
+    getCustomers().then(setCustomers).catch(console.error)
+  }, [])
 
   const active  = invoices.filter((i) => i.status !== 'draft')
   const paid    = invoices.filter((i) => i.status === 'paid')
@@ -79,11 +86,7 @@ export default function DashboardPage() {
     <DashboardLayout>
       <div className="space-y-6">
 
-        {/* ── En-tête ── */}
-        <div
-          className="fade-in-up flex items-start justify-between"
-          style={{ animationDelay: '0ms' }}
-        >
+        <div className="fade-in-up flex items-start justify-between" style={{ animationDelay: '0ms' }}>
           <div>
             <h1 className="text-xl font-bold tracking-tight md:text-2xl">Tableau de bord</h1>
             <p className="text-sm text-muted-foreground">Aperçu de votre activité de facturation</p>
@@ -97,11 +100,7 @@ export default function DashboardPage() {
           </Button>
         </div>
 
-        {/* ── Navigation rapide ── */}
-        <div
-          className="fade-in-up"
-          style={{ animationDelay: '60ms' }}
-        >
+        <div className="fade-in-up" style={{ animationDelay: '60ms' }}>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Accès rapide
           </p>
@@ -129,11 +128,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ── KPI Cards ── */}
-        <div
-          className="fade-in-up grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4"
-          style={{ animationDelay: '180ms' }}
-        >
+        <div className="fade-in-up grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4" style={{ animationDelay: '180ms' }}>
           <KpiCard
             title="Total facturé"
             value={formatCurrency(totalFacture)}
@@ -168,11 +163,7 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* ── Graphique + Clients ── */}
-        <div
-          className="fade-in-up grid gap-6 lg:grid-cols-3"
-          style={{ animationDelay: '260ms' }}
-        >
+        <div className="fade-in-up grid gap-6 lg:grid-cols-3" style={{ animationDelay: '260ms' }}>
           <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle>Revenus mensuels (HT)</CardTitle>
@@ -183,14 +174,10 @@ export default function DashboardPage() {
               </Suspense>
             </CardContent>
           </Card>
-          <CustomerStats />
+          <CustomerStats customers={customers} />
         </div>
 
-        {/* ── Factures récentes ── */}
-        <div
-          className="fade-in-up"
-          style={{ animationDelay: '340ms' }}
-        >
+        <div className="fade-in-up" style={{ animationDelay: '340ms' }}>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle>Factures récentes</CardTitle>

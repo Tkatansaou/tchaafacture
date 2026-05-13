@@ -11,9 +11,11 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { useInvoices, useCustomers, useSettings } from '@/lib/store'
+import { getInvoice, updateInvoice, updateInvoiceStatus, deleteInvoice } from '@/lib/actions/invoices'
+import { getCustomers } from '@/lib/actions/customers'
+import { getSettings } from '@/lib/actions/settings'
 import { formatCurrency, formatDate } from '@/lib/formatters'
-import { InvoiceStatus, InvoiceItem } from '@/lib/types'
+import type { Invoice, InvoiceStatus, InvoiceItem, Customer, CompanySettings } from '@/lib/types'
 
 const statusVariant: Record<InvoiceStatus, 'outline' | 'secondary' | 'success' | 'danger'> = {
   draft: 'outline', sent: 'secondary', paid: 'success', overdue: 'danger',
@@ -28,35 +30,58 @@ interface LineItem extends InvoiceItem { _key: string }
 export default function InvoiceDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { invoices, updateInvoice, deleteInvoice } = useInvoices()
-  const { customers } = useCustomers()
-  const { settings } = useSettings()
 
-  const invoice = invoices.find((i) => i.id === params.id)
-  const TAX_RATE = invoice?.taxRate ?? settings.taxRate ?? 18
+  const [invoice, setInvoice] = useState<Invoice | null>(null)
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [settings, setSettings] = useState<CompanySettings | null>(null)
+  const [notFound, setNotFound] = useState(false)
 
-  const [editing, setEditing] = useState(searchParams.get('edit') === 'true')
+  const [editing, setEditing] = useState(false)
+  const [customerId, setCustomerId] = useState('')
+  const [date, setDate] = useState('')
+  const [dueDate, setDueDate] = useState('')
+  const [notes, setNotes] = useState('')
+  const [lines, setLines] = useState<LineItem[]>([])
+
+  useEffect(() => {
+    Promise.all([getInvoice(params.id), getCustomers(), getSettings()]).then(([inv, c, s]) => {
+      if (!inv) { setNotFound(true); return }
+      setInvoice(inv)
+      setCustomers(c)
+      setSettings(s)
+      if (searchParams.get('edit') === 'true') startEditWith(inv)
+    }).catch(console.error)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.id])
 
   useEffect(() => {
     if (searchParams.get('print') === 'true' && invoice) {
-      const timer = setTimeout(() => window.print(), 600)
+      const timer = setTimeout(() => {
+        window.print()
+        router.replace(`/invoices/${params.id}`)
+      }, 600)
       return () => clearTimeout(timer)
     }
-  }, [invoice, searchParams])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoice])
 
-  // edit state
-  const [customerId, setCustomerId] = useState(invoice?.customerId ?? '')
-  const [date, setDate] = useState(invoice?.date ?? '')
-  const [dueDate, setDueDate] = useState(invoice?.dueDate ?? '')
-  const [notes, setNotes] = useState(invoice?.notes ?? '')
-  const [lines, setLines] = useState<LineItem[]>(
-    invoice?.items.map((item) => ({ ...item, _key: uid() })) ?? []
-  )
+  const TAX_RATE = invoice?.taxRate ?? 18
 
   const selectedCustomer = customers.find((c) => c.id === customerId)
   const subtotal = lines.reduce((s, l) => s + l.total, 0)
-  const tax = Math.round(subtotal * TAX_RATE / 100)
+  const tax = Math.round((subtotal * TAX_RATE) / 100)
   const total = subtotal + tax
+
+  function startEditWith(inv: Invoice) {
+    setCustomerId(inv.customerId)
+    setDate(inv.date)
+    setDueDate(inv.dueDate)
+    setNotes(inv.notes)
+    setLines(inv.items.map((item) => ({ ...item, _key: uid() })))
+    setEditing(true)
+  }
+
+  const startEdit = () => { if (invoice) startEditWith(invoice) }
 
   const updateLine = (key: string, field: keyof LineItem, raw: string) => {
     setLines((prev) =>
@@ -75,11 +100,11 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const removeLine = (key: string) =>
     setLines((p) => (p.length > 1 ? p.filter((l) => l._key !== key) : p))
 
-  const handleSave = (status: 'draft' | 'sent') => {
+  const handleSave = async (status: 'draft' | 'sent') => {
     if (!invoice) return
     if (!customerId) { alert('Veuillez sélectionner un client.'); return }
     const cust = customers.find((c) => c.id === customerId)
-    updateInvoice({
+    const updated: Invoice = {
       ...invoice,
       customerId,
       customerName: cust?.name ?? invoice.customerName,
@@ -91,33 +116,26 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       taxRate: TAX_RATE, amount: total, status,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       items: lines.map(({ _key: _k, ...rest }) => rest),
-    })
+    }
+    await updateInvoice(updated)
+    setInvoice(updated)
     setEditing(false)
   }
 
-  const changeStatus = (status: InvoiceStatus) => {
-    if (invoice) updateInvoice({ ...invoice, status })
-  }
-
-  const handleDelete = () => {
+  const changeStatus = async (status: InvoiceStatus) => {
     if (!invoice) return
-    if (confirm('Supprimer définitivement cette facture ?')) {
-      deleteInvoice(invoice.id)
-      router.push('/invoices')
-    }
+    await updateInvoiceStatus(invoice.id, status)
+    setInvoice({ ...invoice, status })
   }
 
-  const startEdit = () => {
+  const handleDelete = async () => {
     if (!invoice) return
-    setCustomerId(invoice.customerId)
-    setDate(invoice.date)
-    setDueDate(invoice.dueDate)
-    setNotes(invoice.notes)
-    setLines(invoice.items.map((item) => ({ ...item, _key: uid() })))
-    setEditing(true)
+    if (!confirm('Supprimer définitivement cette facture ?')) return
+    await deleteInvoice(invoice.id)
+    router.push('/invoices')
   }
 
-  if (!invoice) {
+  if (notFound) {
     return (
       <DashboardLayout>
         <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
@@ -129,11 +147,20 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     )
   }
 
+  if (!invoice) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center py-24 text-muted-foreground">
+          Chargement…
+        </div>
+      </DashboardLayout>
+    )
+  }
+
   return (
     <DashboardLayout>
       <div className="mx-auto max-w-4xl space-y-5">
 
-        {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" asChild>
@@ -175,7 +202,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           </div>
         </div>
 
-        {/* ── CHANGER LE STATUT ── */}
         {!editing && (
           <Card>
             <CardContent className="p-4">
@@ -199,18 +225,15 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           </Card>
         )}
 
-        {/* ── MODE VUE ── */}
         {!editing && (
           <Card className="print:shadow-none print:border-none">
             <CardContent className="p-6 md:p-10">
-
-              {/* En-tête facture */}
               <div className="flex flex-col gap-6 sm:flex-row sm:justify-between">
                 <div>
-                  <p className="text-xl font-bold text-primary">{settings.name || 'Mon Entreprise'}</p>
-                  {settings.email && <p className="text-sm text-muted-foreground">{settings.email}</p>}
-                  {settings.phone && <p className="text-sm text-muted-foreground">{settings.phone}</p>}
-                  {settings.address && <p className="text-sm text-muted-foreground">{settings.address}</p>}
+                  <p className="text-xl font-bold text-primary">{settings?.name || 'Mon Entreprise'}</p>
+                  {settings?.email && <p className="text-sm text-muted-foreground">{settings.email}</p>}
+                  {settings?.phone && <p className="text-sm text-muted-foreground">{settings.phone}</p>}
+                  {settings?.address && <p className="text-sm text-muted-foreground">{settings.address}</p>}
                 </div>
                 <div className="sm:text-right space-y-1">
                   <p className="text-2xl font-extrabold tracking-tight">FACTURE</p>
@@ -222,7 +245,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
               <hr className="my-6" />
 
-              {/* Facturer à */}
               <div>
                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Facturer à
@@ -238,7 +260,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
               <hr className="my-6" />
 
-              {/* Tableau des lignes */}
               <div className="overflow-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -262,7 +283,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                 </table>
               </div>
 
-              {/* Totaux */}
               <div className="mt-6 ml-auto w-full max-w-xs space-y-2 border-t pt-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Sous-total HT</span>
@@ -288,11 +308,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           </Card>
         )}
 
-        {/* ── MODE ÉDITION ── */}
         {editing && (
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
-              {/* Client dropdown */}
               <Card>
                 <CardContent className="p-5 space-y-3">
                   <p className="font-semibold">Client</p>
@@ -316,7 +334,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                 </CardContent>
               </Card>
 
-              {/* Dates */}
               <Card>
                 <CardContent className="p-5 space-y-3">
                   <p className="font-semibold">Dates</p>
@@ -334,12 +351,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </Card>
             </div>
 
-            {/* Lignes */}
             <Card>
               <CardContent className="p-5">
                 <p className="mb-4 font-semibold">Lignes de facture</p>
 
-                {/* Desktop */}
                 <div className="hidden md:block">
                   <div className="mb-2 grid grid-cols-[1fr_80px_130px_130px_40px] gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     <span>Description</span>
@@ -369,7 +384,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                   </div>
                 </div>
 
-                {/* Mobile */}
                 <div className="space-y-3 md:hidden">
                   {lines.map((line, idx) => (
                     <div key={line._key} className="rounded-lg border p-3 space-y-2">
@@ -424,7 +438,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </CardContent>
             </Card>
 
-            {/* Notes */}
             <Card>
               <CardContent className="p-5">
                 <p className="mb-3 font-semibold">Notes</p>

@@ -1,28 +1,58 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Save, Check, Building2 } from 'lucide-react'
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { useSettings } from '@/lib/store'
+import { getSettings, updateSettings } from '@/lib/actions/settings'
+import type { CompanySettings } from '@/lib/types'
+
+const DEFAULT: CompanySettings = {
+  name: 'Ma Société',
+  email: 'contact@masociete.com',
+  phone: '+228 90 00 00 00',
+  address: 'Lomé, Togo',
+  logoUrl: '',
+  currency: 'XOF',
+  paymentTerms: 30,
+  invoicePrefix: 'INV-',
+  startingNumber: 1,
+  taxRate: 18,
+}
 
 export default function SettingsPage() {
-  const { settings, updateSettings } = useSettings()
+  const [form, setForm] = useState<CompanySettings>(DEFAULT)
   const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
 
-  const handleChange = (field: string) => (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    updateSettings({ [field]: field === 'paymentTerms' || field === 'startingNumber' || field === 'taxRate'
-      ? Number(e.target.value) : e.target.value })
-  }
+  useEffect(() => {
+    getSettings().then(setForm).catch(console.error)
+  }, [])
 
-  const handleSave = () => {
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2500)
+  const handleChange =
+    (field: keyof CompanySettings) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      const value =
+        field === 'paymentTerms' || field === 'startingNumber' || field === 'taxRate'
+          ? Number(e.target.value)
+          : e.target.value
+      setForm((p) => ({ ...p, [field]: value }))
+    }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await updateSettings(form)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -33,7 +63,6 @@ export default function SettingsPage() {
           <p className="text-sm text-muted-foreground">Configurez votre entreprise et vos préférences de facturation.</p>
         </div>
 
-        {/* Company Profile */}
         <Card>
           <CardHeader>
             <CardTitle>Profil de l&apos;entreprise</CardTitle>
@@ -56,25 +85,24 @@ export default function SettingsPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <label className="mb-1.5 block text-sm font-medium">Nom de l&apos;entreprise</label>
-                <Input value={settings.name} onChange={handleChange('name')} placeholder="Ma Société SARL" />
+                <Input value={form.name} onChange={handleChange('name')} placeholder="Ma Société SARL" />
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium">Email</label>
-                <Input type="email" value={settings.email} onChange={handleChange('email')} placeholder="contact@masociete.com" />
+                <Input type="email" value={form.email} onChange={handleChange('email')} placeholder="contact@masociete.com" />
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium">Téléphone</label>
-                <Input type="tel" value={settings.phone} onChange={handleChange('phone')} placeholder="+228 90 00 00 00" />
+                <Input type="tel" value={form.phone} onChange={handleChange('phone')} placeholder="+228 90 00 00 00" />
               </div>
               <div className="sm:col-span-2">
                 <label className="mb-1.5 block text-sm font-medium">Adresse</label>
-                <Input value={settings.address} onChange={handleChange('address')} placeholder="Rue des Acaias, Lomé, Togo" />
+                <Input value={form.address} onChange={handleChange('address')} placeholder="Rue des Acaias, Lomé, Togo" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Invoice Settings */}
         <Card>
           <CardHeader>
             <CardTitle>Paramètres de facturation</CardTitle>
@@ -84,7 +112,7 @@ export default function SettingsPage() {
             <div>
               <label className="mb-1.5 block text-sm font-medium">Devise</label>
               <select
-                value={settings.currency}
+                value={form.currency}
                 onChange={handleChange('currency')}
                 className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
@@ -100,7 +128,7 @@ export default function SettingsPage() {
                 <label className="mb-1.5 block text-sm font-medium">TVA (%)</label>
                 <Input
                   type="number" min="0" max="100"
-                  value={settings.taxRate}
+                  value={form.taxRate}
                   onChange={handleChange('taxRate')}
                 />
               </div>
@@ -108,7 +136,7 @@ export default function SettingsPage() {
                 <label className="mb-1.5 block text-sm font-medium">Délai paiement (jours)</label>
                 <Input
                   type="number" min="1" max="365"
-                  value={settings.paymentTerms}
+                  value={form.paymentTerms}
                   onChange={handleChange('paymentTerms')}
                 />
               </div>
@@ -116,7 +144,7 @@ export default function SettingsPage() {
                 <label className="mb-1.5 block text-sm font-medium">N° de départ</label>
                 <Input
                   type="number" min="1"
-                  value={settings.startingNumber}
+                  value={form.startingNumber}
                   onChange={handleChange('startingNumber')}
                 />
               </div>
@@ -125,7 +153,7 @@ export default function SettingsPage() {
             <div>
               <label className="mb-1.5 block text-sm font-medium">Préfixe des factures</label>
               <Input
-                value={settings.invoicePrefix}
+                value={form.invoicePrefix}
                 onChange={handleChange('invoicePrefix')}
                 placeholder="INV-"
                 className="max-w-[160px]"
@@ -134,11 +162,13 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Save */}
         <div className="flex items-center gap-3 pb-6">
-          <Button onClick={handleSave} className="rounded-full px-6">
-            {saved ? <><Check className="mr-2 h-4 w-4" />Sauvegardé !</>
-              : <><Save className="mr-2 h-4 w-4" />Enregistrer</>}
+          <Button onClick={handleSave} disabled={saving} className="rounded-full px-6">
+            {saved ? (
+              <><Check className="mr-2 h-4 w-4" />Sauvegardé !</>
+            ) : (
+              <><Save className="mr-2 h-4 w-4" />{saving ? 'Enregistrement…' : 'Enregistrer'}</>
+            )}
           </Button>
           {saved && <p className="text-sm font-medium text-green-600">Paramètres mis à jour avec succès.</p>}
         </div>

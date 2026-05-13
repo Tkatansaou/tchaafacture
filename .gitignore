@@ -36,3 +36,10 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+# Claude Code local data (memory, session logs)
+.claude/
+
+# Supabase CLI temp files
+supabase/.temp/
+supabase/supabase/

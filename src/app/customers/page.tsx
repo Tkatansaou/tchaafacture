@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Search, Plus, Mail, Phone, FileText, Pencil, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -10,30 +10,48 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Modal } from '@/components/ui/modal'
-import { useCustomers } from '@/lib/store'
+import { getCustomers, createCustomer, updateCustomer, deleteCustomer } from '@/lib/actions/customers'
 import { formatCurrency } from '@/lib/formatters'
-import { Customer } from '@/lib/types'
+import type { Customer } from '@/lib/types'
 
-function uid() { return Math.random().toString(36).slice(2, 10) }
+type FormData = {
+  name: string
+  email: string
+  phone: string
+  company: string
+  address: string
+}
 
-const emptyCustomer = (): Omit<Customer, 'id' | 'totalInvoices' | 'totalAmount' | 'createdAt' | 'avatarSeed'> => ({
-  name: '', email: '', phone: '', company: '', address: '',
-})
-
-type FormData = ReturnType<typeof emptyCustomer>
+const emptyForm = (): FormData => ({ name: '', email: '', phone: '', company: '', address: '' })
 
 export default function CustomersPage() {
-  const { customers, addCustomer, updateCustomer, deleteCustomer } = useCustomers()
+  const [customers, setCustomers] = useState<Customer[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Customer | null>(null)
-  const [form, setForm] = useState<FormData>(emptyCustomer())
+  const [form, setForm] = useState<FormData>(emptyForm())
   const [errors, setErrors] = useState<Partial<FormData>>({})
+  const [saving, setSaving] = useState(false)
+
+  const load = async () => {
+    try {
+      const data = await getCustomers()
+      setCustomers(data)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  useEffect(() => { load() }, [])
 
   const filtered = customers.filter((c) => {
     if (!searchQuery) return true
     const q = searchQuery.toLowerCase()
-    return c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || c.company.toLowerCase().includes(q)
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.email.toLowerCase().includes(q) ||
+      c.company.toLowerCase().includes(q)
+    )
   })
 
   const openEdit = (c: Customer) => {
@@ -51,26 +69,35 @@ export default function CustomersPage() {
     return Object.keys(e).length === 0
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validate()) return
-    if (editing) {
-      updateCustomer({ ...editing, ...form })
-    } else {
-      const seed = form.name.split(' ')[0] || uid()
-      addCustomer({
-        id: uid(),
-        ...form,
-        avatarSeed: seed,
-        totalInvoices: 0,
-        totalAmount: 0,
-        createdAt: new Date().toISOString().split('T')[0],
-      })
+    setSaving(true)
+    try {
+      if (editing) {
+        await updateCustomer({ ...editing, ...form })
+      } else {
+        await createCustomer({
+          ...form,
+          avatarSeed: form.name.split(' ')[0] || form.name,
+        })
+      }
+      await load()
+      setModalOpen(false)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSaving(false)
     }
-    setModalOpen(false)
   }
 
-  const handleDelete = (id: string) => {
-    if (confirm('Supprimer ce client ?')) deleteCustomer(id)
+  const handleDelete = async (id: string) => {
+    if (!confirm('Supprimer ce client ? Ses factures ne seront pas supprimées.')) return
+    try {
+      await deleteCustomer(id)
+      setCustomers((prev) => prev.filter((c) => c.id !== id))
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   const field = (key: keyof FormData, label: string, type = 'text', placeholder = '') => (
@@ -137,10 +164,16 @@ export default function CustomersPage() {
                       <p className="truncate text-sm text-muted-foreground">{customer.company}</p>
                     </div>
                     <div className="flex gap-1">
-                      <button onClick={() => openEdit(customer)} className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent">
+                      <button
+                        onClick={() => openEdit(customer)}
+                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
+                      >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
-                      <button onClick={() => handleDelete(customer.id)} className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-500">
+                      <button
+                        onClick={() => handleDelete(customer.id)}
+                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-red-50 hover:text-red-500"
+                      >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -173,7 +206,6 @@ export default function CustomersPage() {
         )}
       </div>
 
-      {/* Create / Edit Modal */}
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -188,8 +220,8 @@ export default function CustomersPage() {
 
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="outline" onClick={() => setModalOpen(false)}>Annuler</Button>
-            <Button onClick={handleSave} className="rounded-full px-6">
-              {editing ? 'Enregistrer' : 'Créer le client'}
+            <Button onClick={handleSave} disabled={saving} className="rounded-full px-6">
+              {saving ? 'Enregistrement…' : editing ? 'Enregistrer' : 'Créer le client'}
             </Button>
           </div>
         </div>

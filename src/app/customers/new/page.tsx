@@ -10,11 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useCustomers } from '@/lib/store'
-
-function uid() {
-  return Math.random().toString(36).slice(2, 10)
-}
+import { createCustomer } from '@/lib/actions/customers'
 
 interface FormData {
   name: string
@@ -31,8 +27,6 @@ const empty = (): FormData => ({
 
 export default function NewCustomerPage() {
   const router = useRouter()
-  const { addCustomer } = useCustomers()
-
   const [form, setForm] = useState<FormData>(empty())
   const [errors, setErrors] = useState<Partial<FormData>>({})
   const [saving, setSaving] = useState(false)
@@ -50,22 +44,23 @@ export default function NewCustomerPage() {
     return Object.keys(e).length === 0
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validate()) return
     setSaving(true)
-    addCustomer({
-      id: uid(),
-      name: form.name.trim(),
-      company: form.company.trim(),
-      email: form.email.trim(),
-      phone: form.phone.trim(),
-      address: form.address.trim(),
-      avatarSeed: form.name.split(' ')[0] || uid(),
-      totalInvoices: 0,
-      totalAmount: 0,
-      createdAt: new Date().toISOString().split('T')[0],
-    })
-    router.push('/customers')
+    try {
+      await createCustomer({
+        name: form.name.trim(),
+        company: form.company.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        address: form.address.trim(),
+        avatarSeed: form.name.split(' ')[0] || form.name,
+      })
+      router.push('/customers')
+    } catch (err) {
+      console.error(err)
+      setSaving(false)
+    }
   }
 
   const field = (
@@ -94,7 +89,6 @@ export default function NewCustomerPage() {
     <DashboardLayout>
       <div className="mx-auto max-w-2xl space-y-6">
 
-        {/* Header */}
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" asChild>
             <Link href="/customers"><ArrowLeft className="h-4 w-4" /></Link>
@@ -105,7 +99,6 @@ export default function NewCustomerPage() {
           </div>
         </div>
 
-        {/* Avatar preview */}
         <div className="flex items-center gap-4 rounded-xl border bg-card p-4">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
             {form.name ? (
@@ -122,7 +115,6 @@ export default function NewCustomerPage() {
           </div>
         </div>
 
-        {/* Identité */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Identité</CardTitle>
@@ -133,7 +125,6 @@ export default function NewCustomerPage() {
           </CardContent>
         </Card>
 
-        {/* Contact */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Contact</CardTitle>
@@ -144,7 +135,6 @@ export default function NewCustomerPage() {
           </CardContent>
         </Card>
 
-        {/* Adresse */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Adresse</CardTitle>
@@ -154,7 +144,6 @@ export default function NewCustomerPage() {
           </CardContent>
         </Card>
 
-        {/* Notes */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Notes internes</CardTitle>
@@ -169,14 +158,13 @@ export default function NewCustomerPage() {
           </CardContent>
         </Card>
 
-        {/* Actions */}
         <div className="flex justify-end gap-3 pb-6">
           <Button variant="outline" asChild>
             <Link href="/customers">Annuler</Link>
           </Button>
           <Button onClick={handleSave} disabled={saving} className="rounded-full px-6">
             <Save className="mr-2 h-4 w-4" />
-            Enregistrer le client
+            {saving ? 'Enregistrement…' : 'Enregistrer le client'}
           </Button>
         </div>
       </div>

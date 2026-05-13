@@ -1,14 +1,20 @@
-import { mockCustomers } from '@/lib/mock-data'
+'use client'
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { formatCurrency } from '@/lib/formatters'
 import { Users } from 'lucide-react'
+import type { Customer } from '@/lib/types'
 
-const topCustomers = [...mockCustomers]
-  .sort((a, b) => b.totalAmount - a.totalAmount)
-  .slice(0, 3)
+interface CustomerStatsProps {
+  customers: Customer[]
+}
 
-export function CustomerStats() {
+export function CustomerStats({ customers }: CustomerStatsProps) {
+  const topCustomers = [...customers]
+    .sort((a, b) => b.totalAmount - a.totalAmount)
+    .slice(0, 3)
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -20,38 +26,46 @@ export function CustomerStats() {
             <Users className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-3xl font-bold">{mockCustomers.length}</p>
+            <p className="text-3xl font-bold">{customers.length}</p>
             <p className="text-sm text-muted-foreground">clients actifs</p>
           </div>
         </div>
 
-        <div>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Top clients
-          </p>
-          <div className="space-y-3">
-            {topCustomers.map((customer) => (
-              <div key={customer.id} className="flex items-center gap-3">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage
-                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${customer.avatarSeed}`}
-                    alt={customer.name}
-                  />
-                  <AvatarFallback>
-                    {customer.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <p className="truncate text-sm font-medium">{customer.name}</p>
-                  <p className="text-xs text-muted-foreground">{customer.totalInvoices} factures</p>
+        {topCustomers.length > 0 && (
+          <div>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Top clients
+            </p>
+            <div className="space-y-3">
+              {topCustomers.map((customer) => (
+                <div key={customer.id} className="flex items-center gap-3">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage
+                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${customer.avatarSeed}`}
+                      alt={customer.name}
+                    />
+                    <AvatarFallback>
+                      {customer.name
+                        .split(' ')
+                        .map((n) => n[0])
+                        .join('')
+                        .slice(0, 2)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate text-sm font-medium">{customer.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {customer.totalInvoices} facture{customer.totalInvoices !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <p className="text-xs font-semibold text-primary">
+                    {formatCurrency(customer.totalAmount)}
+                  </p>
                 </div>
-                <p className="text-xs font-semibold text-primary">
-                  {formatCurrency(customer.totalAmount)}
-                </p>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   )

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Plus, Trash2, Save, Download } from 'lucide-react'
 import Link from 'next/link'
@@ -10,9 +10,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useInvoices, useCustomers, useSettings } from '@/lib/store'
+import { createInvoice, nextInvoiceNumber } from '@/lib/actions/invoices'
+import { getCustomers } from '@/lib/actions/customers'
+import { getSettings } from '@/lib/actions/settings'
 import { formatCurrency } from '@/lib/formatters'
-import { InvoiceItem, Invoice } from '@/lib/types'
+import type { InvoiceItem, Customer } from '@/lib/types'
 
 function today() {
   return new Date().toISOString().split('T')[0]
@@ -36,24 +38,35 @@ const emptyLine = (): LineItem => ({
 
 export default function NewInvoicePage() {
   const router = useRouter()
-  const { invoices, addInvoice, nextInvoiceNumber } = useInvoices()
-  const { customers } = useCustomers()
-  const { settings } = useSettings()
-
-  const invoiceNumber = useMemo(() => nextInvoiceNumber(), [invoices])
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [invoiceNumber, setInvoiceNumber] = useState('')
 
   const [customerId, setCustomerId] = useState('')
-  const [taxRate, setTaxRate] = useState(settings.taxRate || 18)
+  const [taxRate, setTaxRate] = useState(18)
   const [date, setDate] = useState(today())
-  const [dueDate, setDueDate] = useState(addDays(today(), settings.paymentTerms || 30))
+  const [dueDate, setDueDate] = useState(addDays(today(), 30))
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState<LineItem[]>([emptyLine()])
   const [saving, setSaving] = useState(false)
 
-  const selectedCustomer = customers.find((c) => c.id === customerId)
+  useEffect(() => {
+    Promise.all([getCustomers(), getSettings(), nextInvoiceNumber()]).then(
+      ([c, s, num]) => {
+        setCustomers(c)
+        setTaxRate(s.taxRate || 18)
+        setDueDate(addDays(today(), s.paymentTerms || 30))
+        setInvoiceNumber(num)
+      }
+    ).catch(console.error)
+  }, [])
+
+  const selectedCustomer = useMemo(
+    () => customers.find((c) => c.id === customerId),
+    [customers, customerId]
+  )
 
   const subtotal = lines.reduce((s, l) => s + l.total, 0)
-  const tax = Math.round(subtotal * taxRate / 100)
+  const tax = Math.round((subtotal * taxRate) / 100)
   const total = subtotal + tax
 
   const updateLine = (key: string, field: keyof LineItem, raw: string) => {
@@ -74,29 +87,38 @@ export default function NewInvoicePage() {
   const removeLine = (key: string) =>
     setLines((p) => (p.length > 1 ? p.filter((l) => l._key !== key) : p))
 
-  const handleSubmit = (status: 'draft' | 'sent', download = false) => {
+  const handleSubmit = async (status: 'draft' | 'sent', download = false) => {
     if (!customerId) { alert('Veuillez sélectionner un client.'); return }
     if (lines.every((l) => !l.description.trim())) { alert('Ajoutez au moins une ligne.'); return }
     setSaving(true)
-    const invoice: Invoice = {
-      id: invoiceNumber,
-      customerId,
-      customerName: selectedCustomer?.name ?? '',
-      customerCompany: selectedCustomer?.company ?? '',
-      customerEmail: selectedCustomer?.email ?? '',
-      customerPhone: selectedCustomer?.phone ?? '',
-      customerAddress: selectedCustomer?.address ?? '',
-      date, dueDate, subtotal, tax,
-      taxRate, amount: total,
-      status, notes,
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      items: lines.map(({ _key: _k, ...rest }) => rest),
-    }
-    addInvoice(invoice)
-    if (download) {
-      router.push(`/invoices/${invoiceNumber}?print=true`)
-    } else {
-      router.push('/invoices')
+    try {
+      const created = await createInvoice({
+        id: invoiceNumber,
+        customerId,
+        customerName: selectedCustomer?.name ?? '',
+        customerCompany: selectedCustomer?.company ?? '',
+        customerEmail: selectedCustomer?.email ?? '',
+        customerPhone: selectedCustomer?.phone ?? '',
+        customerAddress: selectedCustomer?.address ?? '',
+        date,
+        dueDate,
+        subtotal,
+        tax,
+        taxRate,
+        amount: total,
+        status,
+        notes,
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        items: lines.map(({ _key: _k, ...rest }) => rest),
+      })
+      if (download) {
+        router.push(`/invoices/${created.id}?print=true`)
+      } else {
+        router.push('/invoices')
+      }
+    } catch (err) {
+      console.error(err)
+      setSaving(false)
     }
   }
 
@@ -104,7 +126,6 @@ export default function NewInvoicePage() {
     <DashboardLayout>
       <div className="mx-auto max-w-4xl space-y-6">
 
-        {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" asChild>
@@ -112,7 +133,7 @@ export default function NewInvoicePage() {
             </Button>
             <div>
               <h1 className="text-xl font-bold tracking-tight">Nouvelle facture</h1>
-              <p className="text-sm text-muted-foreground">N° {invoiceNumber}</p>
+              <p className="text-sm text-muted-foreground">N° {invoiceNumber || '…'}</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -125,7 +146,6 @@ export default function NewInvoicePage() {
           </div>
         </div>
 
-        {/* Client + Dates */}
         <div className="grid gap-4 md:grid-cols-2">
           <Card>
             <CardHeader className="pb-3">
@@ -156,7 +176,7 @@ export default function NewInvoicePage() {
               {customers.length === 0 && (
                 <p className="text-xs text-muted-foreground">
                   Aucun client.{' '}
-                  <Link href="/customers" className="text-primary underline underline-offset-2">
+                  <Link href="/customers/new" className="text-primary underline underline-offset-2">
                     Créez-en un d&apos;abord.
                   </Link>
                 </p>
@@ -171,7 +191,7 @@ export default function NewInvoicePage() {
             <CardContent className="space-y-3">
               <div>
                 <label className="mb-1.5 block text-sm font-medium">N° Facture</label>
-                <Input value={invoiceNumber} readOnly className="bg-muted/40 font-mono" />
+                <Input value={invoiceNumber || '…'} readOnly className="bg-muted/40 font-mono" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -187,13 +207,11 @@ export default function NewInvoicePage() {
           </Card>
         </div>
 
-        {/* Lignes de facture */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Lignes de facture</CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Desktop */}
             <div className="hidden md:block">
               <div className="mb-2 grid grid-cols-[1fr_80px_130px_130px_40px] gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 <span>Description</span>
@@ -236,7 +254,6 @@ export default function NewInvoicePage() {
               </div>
             </div>
 
-            {/* Mobile */}
             <div className="space-y-4 md:hidden">
               {lines.map((line, idx) => (
                 <div key={line._key} className="rounded-lg border p-3 space-y-2">
@@ -275,7 +292,6 @@ export default function NewInvoicePage() {
               <Plus className="mr-2 h-4 w-4" />Ajouter une ligne
             </Button>
 
-            {/* Totaux */}
             <div className="mt-6 ml-auto w-full max-w-xs space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Sous-total HT</span>
@@ -301,7 +317,6 @@ export default function NewInvoicePage() {
           </CardContent>
         </Card>
 
-        {/* Notes */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Notes & conditions</CardTitle>
@@ -316,7 +331,6 @@ export default function NewInvoicePage() {
           </CardContent>
         </Card>
 
-        {/* Actions bas de page */}
         <div className="flex justify-end gap-3 pb-6">
           <Button variant="outline" asChild>
             <Link href="/invoices">Annuler</Link>
