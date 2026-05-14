@@ -113,7 +113,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       customerPhone: cust?.phone ?? invoice.customerPhone,
       customerAddress: cust?.address ?? invoice.customerAddress,
       date, dueDate, notes, subtotal, tax,
-      taxRate: TAX_RATE, amount: total, status,
+      taxRate: TAX_RATE, taxLabel: invoice.taxLabel, amount: total, status,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       items: lines.map(({ _key: _k, ...rest }) => rest),
     }
@@ -289,7 +289,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                   <span>{formatCurrency(invoice.subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">TVA {invoice.taxRate}%</span>
+                  <span className="text-muted-foreground">
+                    {invoice.taxLabel}{invoice.taxRate > 0 ? ` ${invoice.taxRate}%` : ''}
+                  </span>
                   <span>{formatCurrency(invoice.tax)}</span>
                 </div>
                 <div className="flex justify-between rounded-lg bg-primary/5 px-3 py-2.5 text-base font-bold">
@@ -427,7 +429,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                     <span className="font-medium">{formatCurrency(subtotal)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">TVA {TAX_RATE}%</span>
+                    <span className="text-muted-foreground">
+                      {invoice.taxLabel}{TAX_RATE > 0 ? ` ${TAX_RATE}%` : ''}
+                    </span>
                     <span className="font-medium">{formatCurrency(tax)}</span>
                   </div>
                   <div className="flex justify-between rounded-lg bg-primary/5 px-3 py-2 font-bold">

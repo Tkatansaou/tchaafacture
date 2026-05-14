@@ -16,6 +16,16 @@ import { getSettings } from '@/lib/actions/settings'
 import { formatCurrency } from '@/lib/formatters'
 import type { InvoiceItem, Customer } from '@/lib/types'
 
+const TAX_OPTIONS = [
+  { key: 'exonere', label: 'Exonéré',      rate: 0    },
+  { key: 'tva18',   label: 'TVA',           rate: 18   },
+  { key: 'tva20',   label: 'TVA',           rate: 20   },
+  { key: 'tps18',   label: 'TPS',           rate: 18   },
+  { key: 'css',     label: 'CSS',           rate: 1    },
+  { key: 'custom',  label: 'Personnalisée', rate: null },
+] as const
+type TaxKey = typeof TAX_OPTIONS[number]['key']
+
 function today() {
   return new Date().toISOString().split('T')[0]
 }
@@ -42,6 +52,8 @@ export default function NewInvoicePage() {
   const [invoiceNumber, setInvoiceNumber] = useState('')
 
   const [customerId, setCustomerId] = useState('')
+  const [taxKey, setTaxKey] = useState<TaxKey>('tva18')
+  const [taxLabel, setTaxLabel] = useState('TVA')
   const [taxRate, setTaxRate] = useState(18)
   const [date, setDate] = useState(today())
   const [dueDate, setDueDate] = useState(addDays(today(), 30))
@@ -53,8 +65,18 @@ export default function NewInvoicePage() {
     Promise.all([getCustomers(), getSettings(), nextInvoiceNumber()]).then(
       ([c, s, num]) => {
         setCustomers(c)
-        setTaxRate(s.taxRate || 18)
         setDueDate(addDays(today(), s.paymentTerms || 30))
+        const rate = s.taxRate || 18
+        const matched = TAX_OPTIONS.find(o => o.rate === rate && o.key !== 'custom')
+        if (matched) {
+          setTaxKey(matched.key)
+          setTaxLabel(matched.label)
+          setTaxRate(matched.rate)
+        } else {
+          setTaxKey('custom')
+          setTaxLabel('Personnalisée')
+          setTaxRate(rate)
+        }
         setInvoiceNumber(num)
       }
     ).catch(console.error)
@@ -83,6 +105,13 @@ export default function NewInvoicePage() {
     )
   }
 
+  const handleTaxChange = (key: TaxKey) => {
+    setTaxKey(key)
+    const opt = TAX_OPTIONS.find(o => o.key === key)!
+    setTaxLabel(opt.label)
+    if (opt.rate !== null) setTaxRate(opt.rate)
+  }
+
   const addLine = () => setLines((p) => [...p, emptyLine()])
   const removeLine = (key: string) =>
     setLines((p) => (p.length > 1 ? p.filter((l) => l._key !== key) : p))
@@ -106,6 +135,7 @@ export default function NewInvoicePage() {
         subtotal,
         tax,
         taxRate,
+        taxLabel,
         amount: total,
         status,
         notes,
@@ -304,14 +334,27 @@ export default function NewInvoicePage() {
                 <span className="font-medium">{formatCurrency(subtotal)}</span>
               </div>
               <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-muted-foreground shrink-0">TVA (%)</span>
+                <span className="text-muted-foreground shrink-0">Taxe</span>
                 <div className="flex items-center gap-2">
-                  <Input
-                    type="number" min="0" max="100"
-                    value={taxRate}
-                    onChange={(e) => setTaxRate(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
-                    className="h-8 w-20 text-right text-sm"
-                  />
+                  <select
+                    value={taxKey}
+                    onChange={(e) => handleTaxChange(e.target.value as TaxKey)}
+                    className="h-8 rounded-lg border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {TAX_OPTIONS.map(o => (
+                      <option key={o.key} value={o.key}>
+                        {o.label}{o.rate !== null ? ` (${o.rate}%)` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {taxKey === 'custom' && (
+                    <Input
+                      type="number" min="0" max="100"
+                      value={taxRate}
+                      onChange={(e) => setTaxRate(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+                      className="h-8 w-20 text-right text-sm"
+                    />
+                  )}
                   <span className="w-24 text-right font-medium">{formatCurrency(tax)}</span>
                 </div>
               </div>

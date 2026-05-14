@@ -46,6 +46,7 @@ export interface Invoice {
   subtotal: number
   tax: number
   taxRate: number
+  taxLabel: string
   amount: number
   status: InvoiceStatus
   items: InvoiceItem[]
