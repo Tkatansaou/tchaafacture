@@ -28,7 +28,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="relative z-10 space-y-8">
           <div>
             <h2 className="text-3xl font-bold leading-tight">
-              La facturation<br />pensée pour<br />l&apos;Afrique de l&apos;Ouest
+              La facturation<br />pensée pour<br />l&apos;Afrique
             </h2>
             <p className="mt-3 text-blue-200 text-sm">
               Optimisé pour le Franc CFA · XOF &amp; XAF
