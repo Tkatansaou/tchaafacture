@@ -88,6 +88,7 @@ export default function NewInvoicePage() {
     setLines((p) => (p.length > 1 ? p.filter((l) => l._key !== key) : p))
 
   const handleSubmit = async (status: 'draft' | 'sent', download = false) => {
+    if (!invoiceNumber.trim()) { alert('Veuillez saisir un numéro de facture.'); return }
     if (!customerId) { alert('Veuillez sélectionner un client.'); return }
     if (lines.every((l) => !l.description.trim())) { alert('Ajoutez au moins une ligne.'); return }
     setSaving(true)
@@ -133,7 +134,7 @@ export default function NewInvoicePage() {
             </Button>
             <div>
               <h1 className="text-xl font-bold tracking-tight">Nouvelle facture</h1>
-              <p className="text-sm text-muted-foreground">N° {invoiceNumber || '…'}</p>
+              <p className="text-sm text-muted-foreground">N° {invoiceNumber || '—'}</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -191,7 +192,12 @@ export default function NewInvoicePage() {
             <CardContent className="space-y-3">
               <div>
                 <label className="mb-1.5 block text-sm font-medium">N° Facture</label>
-                <Input value={invoiceNumber || '…'} readOnly className="bg-muted/40 font-mono" />
+                <Input
+                  value={invoiceNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  placeholder="ex. INV-001"
+                  className="font-mono"
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
