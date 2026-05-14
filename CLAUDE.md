@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Ce que fait l'application
 
-**mouFacture** est un SaaS de facturation en ligne destiné aux PME d'Afrique de l'Ouest. Il permet de créer et gérer des factures et des devis, de suivre les paiements, d'envoyer des factures par email avec PDF en pièce jointe, et de suivre les revenus via un tableau de bord. C'est une application **full-stack multi-tenant** : chaque utilisateur a ses propres données, isolées par Row Level Security dans Supabase. La devise principale est le Franc CFA (XOF).
+**mouFacture** est un SaaS de facturation en ligne destiné aux PME d'Afrique. Il permet de créer et gérer des factures et des devis, de suivre les paiements, d'envoyer des factures par email avec PDF en pièce jointe, et de suivre les revenus via un tableau de bord. C'est une application **full-stack multi-tenant** : chaque utilisateur a ses propres données, isolées par Row Level Security dans Supabase. La devise principale est le Franc CFA (XOF).
+
+L'application dispose d'une **landing page publique** sur `/` (accessible sans connexion) et d'un **tableau de bord** sur `/dashboard` (protégé par auth).
 
 ## Commandes
 
@@ -169,19 +171,27 @@ Workflow complet : Brouillon → Envoyé → Accepté/Refusé/Expiré → (Conve
 | `/auth/login` | Formulaire email + mot de passe (`signInWithPassword`) |
 | `/auth/register` | Inscription + validation confirmation mot de passe (`signUp`) |
 | `/auth/verify-email` | Page statique post-inscription |
-| `/auth/callback` | Route Handler — échange le code PKCE contre une session, redirige vers `/` |
+| `/auth/callback` | Route Handler — échange le code PKCE contre une session, redirige vers `/dashboard` |
 
-Layout `/auth/layout.tsx` : centré, sans sidebar.
+Layout `/auth/layout.tsx` : panneau gauche bleu (branding "La facturation pensée pour l'Afrique") + panneau droit formulaire.
 
 ### Middleware (`middleware.ts`)
 
-Rafraîchit la session Supabase sur chaque requête et redirige vers `/auth/login` si l'utilisateur n'est pas authentifié. Routes publiques exclues : `/auth/login`, `/auth/register`, `/auth/verify-email`, `/auth/callback`.
+Rafraîchit la session Supabase sur chaque requête et redirige vers `/auth/login` si l'utilisateur n'est pas authentifié. Routes publiques exclues : `/` (landing page), `/auth/login`, `/auth/register`, `/auth/verify-email`, `/auth/callback`.
+
+### Emails transactionnels (Supabase + Resend SMTP)
+
+Les emails d'authentification (confirmation d'inscription, réinitialisation de mot de passe) passent par Resend via SMTP configuré dans Supabase :
+- **Host** : `smtp.resend.com` — **Port** : `465` — **Username** : `resend`
+- **Sender** : `onboarding@resend.dev` (nom affiché : mouFacture)
+- Configuré dans Supabase → Authentication → Email → SMTP Settings
 
 ### Pages (`src/app/`)
 
 | Route | Comportement clé |
 |---|---|
-| `/` | Dashboard : KPI cards + graphique 6 mois glissants + accès rapide animé |
+| `/` | Landing page publique — NavBar, Hero, Fonctionnalités, CTA, Footer (accessible sans auth) |
+| `/dashboard` | Tableau de bord : KPI cards + graphique 6 mois glissants + accès rapide animé |
 | `/invoices` | Liste avec filtres par statut (tabs) + recherche |
 | `/invoices/new` | Formulaire : dropdown client, lignes dynamiques, type de taxe (TVA/TPS/Exonéré/CSS/Personnalisée), numéro éditable |
 | `/invoices/[id]` | Vue propre + boutons : PDF (téléchargement), Email (si client a un email), Imprimer, Modifier, Supprimer + section paiements partiels |
@@ -234,7 +244,7 @@ Utilisées sur le dashboard avec `style={{ animationDelay: '${n}ms' }}` pour l'e
 - Le taux de TVA est stocké dans `CompanySettings.taxRate` (défaut global) ET dans chaque `Invoice.taxRate` / `Quote.taxRate` (valeur figée à la création)
 - Ne pas installer Radix UI pour de nouveaux composants simples — implémenter en CSS/React pur
 - Ne jamais utiliser `src/lib/store.ts` ou `src/lib/mock-data.ts` — ces fichiers ont été supprimés
-- Le déploiement est sur **Vercel** (https://tchaafacture.vercel.app) via push automatique sur la branche `master`
+- Le déploiement est sur **Vercel** (https://moufacture-tchaa-katansaous-projects.vercel.app) via push automatique sur la branche `master`
 - Projet Supabase : ref `rbefcjhfzwreoqtjbols`, région `eu-west-2` (London)
 - Pour les nouvelles traductions, ajouter les clés dans `src/lib/i18n/translations.ts` pour les deux locales (`fr` et `en`)
 - La route PDF utilise `export const runtime = 'nodejs'` — ne pas la basculer en edge runtime
