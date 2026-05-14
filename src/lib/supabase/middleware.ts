@@ -1,14 +1,12 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const PUBLIC_PATHS = [
+const PUBLIC_PREFIXES = [
+  '/auth/',
+]
+
+const PUBLIC_EXACT = [
   '/',
-  '/auth/login',
-  '/auth/register',
-  '/auth/verify-email',
-  '/auth/callback',
-  '/auth/forgot-password',
-  '/auth/reset-password',
 ]
 
 export async function updateSession(request: NextRequest) {
@@ -16,7 +14,9 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
-  const isPublicPath = PUBLIC_PATHS.some(p => pathname.startsWith(p))
+  const isPublicPath =
+    PUBLIC_EXACT.includes(pathname) ||
+    PUBLIC_PREFIXES.some(p => pathname.startsWith(p))
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
