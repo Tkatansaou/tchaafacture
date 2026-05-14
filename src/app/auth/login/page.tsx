@@ -53,13 +53,15 @@ export default function LoginPage() {
   }
 
   async function handleGoogleSignIn() {
+    if (!process.env.NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED) {
+      setError('La connexion Google n\'est pas encore activée. Utilisez email + mot de passe.')
+      return
+    }
     setGoogleLoading(true)
     const supabase = createClient()
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo: `${location.origin}/auth/callback`,
-      },
+      options: { redirectTo: `${location.origin}/auth/callback` },
     })
   }
 
@@ -75,10 +77,15 @@ export default function LoginPage() {
         type="button"
         onClick={handleGoogleSignIn}
         disabled={googleLoading}
-        className="flex w-full items-center justify-center gap-3 rounded-xl border h-11 text-sm font-medium hover:bg-accent transition-colors disabled:opacity-60"
+        className="relative flex w-full items-center justify-center gap-3 rounded-xl border h-11 text-sm font-medium hover:bg-accent transition-colors disabled:opacity-60"
       >
         <GoogleIcon />
         {googleLoading ? 'Redirection…' : 'Continuer avec Google'}
+        {!process.env.NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED && (
+          <span className="absolute right-3 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+            Bientôt
+          </span>
+        )}
       </button>
 
       {/* Separator */}
