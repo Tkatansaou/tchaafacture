@@ -71,7 +71,7 @@ export default function NewInvoicePage() {
         if (matched) {
           setTaxKey(matched.key)
           setTaxLabel(matched.label)
-          setTaxRate(matched.rate)
+          setTaxRate(matched.rate ?? rate)
         } else {
           setTaxKey('custom')
           setTaxLabel('Personnalisée')
