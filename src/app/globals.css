@@ -104,3 +104,22 @@
 .fade-in {
   animation: fadeIn 0.4s ease-out both;
 }
+
+@keyframes slideInFromBottom {
+  from {
+    transform: translateY(0.75rem);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.slide-in-bottom {
+  animation: slideInFromBottom 0.25s ease-out both;
+}
+
+html {
+  scroll-behavior: smooth;
+}

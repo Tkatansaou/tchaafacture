@@ -1,15 +1,15 @@
 'use client'
 
-import { useState } from "react"
-import { Sidebar } from "./sidebar"
-import { Header } from "./header"
+import { useState } from 'react'
+import { Sidebar } from './sidebar'
+import { Header } from './header'
+import { Toaster } from '@/components/ui/toaster'
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      {/* Mobile backdrop */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/40 md:hidden"
@@ -25,6 +25,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+
+      <Toaster />
     </div>
   )
 }

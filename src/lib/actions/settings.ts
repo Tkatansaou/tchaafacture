@@ -4,31 +4,31 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type { CompanySettings } from '@/lib/types'
 
-const DEFAULT_SETTINGS: Omit<CompanySettings, 'logoUrl'> & { logo_url: string } = {
+const DEFAULT_DB = {
   name: 'Ma Société',
-  email: 'contact@masociete.com',
-  phone: '+228 90 00 00 00',
-  address: 'Lomé, Togo',
+  email: '',
+  phone: '',
+  address: '',
   logo_url: '',
   currency: 'XOF',
-  paymentTerms: 30,
-  invoicePrefix: 'INV-',
-  startingNumber: 1,
-  taxRate: 18,
+  payment_terms: 30,
+  invoice_prefix: 'INV-',
+  starting_number: 1,
+  tax_rate: 18,
 }
 
 function rowToSettings(row: Record<string, unknown>): CompanySettings {
   return {
-    name: row.name as string,
-    email: row.email as string,
-    phone: row.phone as string,
-    address: row.address as string,
-    logoUrl: row.logo_url as string,
-    currency: row.currency as string,
-    paymentTerms: row.payment_terms as number,
-    invoicePrefix: row.invoice_prefix as string,
-    startingNumber: row.starting_number as number,
-    taxRate: Number(row.tax_rate),
+    name: (row.name as string) || '',
+    email: (row.email as string) || '',
+    phone: (row.phone as string) || '',
+    address: (row.address as string) || '',
+    logoUrl: (row.logo_url as string) || '',
+    currency: (row.currency as string) || 'XOF',
+    paymentTerms: (row.payment_terms as number) || 30,
+    invoicePrefix: (row.invoice_prefix as string) || 'INV-',
+    startingNumber: (row.starting_number as number) || 1,
+    taxRate: Number(row.tax_rate) || 18,
   }
 }
 
@@ -46,13 +46,15 @@ export async function getSettings(): Promise<CompanySettings> {
     .single()
 
   if (error || !data) {
-    // Crée les settings par défaut si absent (normalement créé par le trigger)
-    const { data: created } = await supabase
+    const { data: created, error: insertError } = await supabase
       .from('company_settings')
-      .insert({ user_id: user.id, ...DEFAULT_SETTINGS })
+      .insert({ user_id: user.id, ...DEFAULT_DB })
       .select()
       .single()
-    return created ? rowToSettings(created) : (DEFAULT_SETTINGS as unknown as CompanySettings)
+    if (insertError || !created) {
+      return rowToSettings({ user_id: user.id, ...DEFAULT_DB })
+    }
+    return rowToSettings(created)
   }
 
   return rowToSettings(data)
