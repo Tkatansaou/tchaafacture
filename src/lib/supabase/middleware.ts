@@ -1,8 +1,21 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+const PUBLIC_PATHS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/verify-email',
+  '/auth/callback',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+]
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
+
+  const { pathname } = request.nextUrl
+
+  const isPublicPath = PUBLIC_PATHS.some(p => pathname.startsWith(p))
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,21 +33,27 @@ export async function updateSession(request: NextRequest) {
           )
         },
       },
-    }
+    },
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // Pages publiques : on rafraîchit le token mais sans vérifier l'auth
+  if (isPublicPath) {
+    await supabase.auth.getUser()
+    return supabaseResponse
+  }
 
-  const { pathname } = request.nextUrl
+  // Pages protégées : vérification stricte — toute erreur = redirection login
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-  const isPublicRoute =
-    pathname.startsWith('/auth/') ||
-    pathname === '/favicon.ico' ||
-    pathname.startsWith('/_next/')
-
-  if (!user && !isPublicRoute) {
+    if (!user) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/auth/login'
+      return NextResponse.redirect(url)
+    }
+  } catch {
     const url = request.nextUrl.clone()
     url.pathname = '/auth/login'
     return NextResponse.redirect(url)
