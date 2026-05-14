@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Ce que fait l'application
 
-**mouFacture** est un SaaS de facturation en ligne destiné aux PME d'Afrique de l'Ouest. Il permet de créer et gérer des factures, des clients, et de suivre les revenus via un tableau de bord. C'est une application **full-stack multi-tenant** : chaque utilisateur a ses propres données, isolées par Row Level Security dans Supabase. La devise principale est le Franc CFA (XOF).
+**mouFacture** est un SaaS de facturation en ligne destiné aux PME d'Afrique de l'Ouest. Il permet de créer et gérer des factures et des devis, de suivre les paiements, d'envoyer des factures par email avec PDF en pièce jointe, et de suivre les revenus via un tableau de bord. C'est une application **full-stack multi-tenant** : chaque utilisateur a ses propres données, isolées par Row Level Security dans Supabase. La devise principale est le Franc CFA (XOF).
 
 ## Commandes
 
@@ -29,12 +29,15 @@ npm run start    # Serveur de production (après build)
 - **class-variance-authority + clsx + tailwind-merge** — variants de composants UI
 - **Supabase** — PostgreSQL + Auth + Row Level Security (RLS)
 - **`@supabase/ssr`** — gestion des sessions serveur/client
+- **`@react-pdf/renderer`** — génération de PDF côté serveur (route API `/api/invoices/[id]/pdf`)
+- **`resend`** — envoi d'emails transactionnels avec PDF en pièce jointe
 
 ### Variables d'environnement (`.env.local`)
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://rbefcjhfzwreoqtjbols.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<clé anon>
+RESEND_API_KEY=<clé Resend pour l'envoi d'emails>
 ```
 
 Ces variables sont également configurées sur Vercel (production + preview + development).
@@ -43,12 +46,16 @@ Ces variables sont également configurées sur Vercel (production + preview + de
 
 | Fichier | Rôle |
 |---|---|
-| `types.ts` | Interfaces TypeScript partagées (`Invoice`, `Customer`, `CompanySettings`, etc.) |
+| `types.ts` | Interfaces TypeScript partagées (`Invoice`, `Customer`, `CompanySettings`, `Quote`, `Payment`, etc.) |
 | `formatters.ts` | `formatCurrency(n)` → XOF via `Intl`, `formatDate(s)` → `Intl.DateTimeFormat` fr-FR |
 | `utils.ts` | Utilitaire `cn()` pour fusionner les classes Tailwind |
 | `supabase/client.ts` | Client navigateur (`createBrowserClient`) |
 | `supabase/server.ts` | Client serveur (`createServerClient` avec cookies Next.js) |
 | `supabase/middleware.ts` | `updateSession()` — rafraîchit le token à chaque requête |
+| `pdf/invoice-pdf.tsx` | Template PDF de la facture (`@react-pdf/renderer`) |
+| `email/invoice-email.tsx` | Template HTML de l'email de facture (inline CSS) |
+| `i18n/translations.ts` | Traductions FR/EN complètes de toute l'interface |
+| `i18n/context.tsx` | Contexte React `I18nProvider` + hook `useI18n()` — persistance localStorage |
 
 > `store.ts` et `mock-data.ts` ont été supprimés — remplacés par les Server Actions.
 
@@ -61,6 +68,9 @@ Toute interaction avec la base de données passe par ces Server Actions (`'use s
 | `invoices.ts` | `getInvoices`, `getInvoice`, `createInvoice`, `updateInvoice`, `updateInvoiceStatus`, `deleteInvoice`, `nextInvoiceNumber` |
 | `customers.ts` | `getCustomers` (avec stats agrégées), `createCustomer`, `updateCustomer`, `deleteCustomer` |
 | `settings.ts` | `getSettings` (upsert au premier appel), `updateSettings` |
+| `quotes.ts` | `getQuotes`, `getQuote`, `createQuote`, `updateQuote`, `updateQuoteStatus`, `deleteQuote`, `convertQuoteToInvoice` |
+| `payments.ts` | `getPayments`, `addPayment`, `deletePayment` — recalcule le statut de la facture automatiquement |
+| `email.ts` | `sendInvoiceEmail` — génère le PDF + envoie via Resend avec pièce jointe |
 
 ### Flux de données
 
@@ -83,18 +93,74 @@ Ne pas convertir les pages en Server Components sauf si elles sont 100% statique
 
 ### Schéma base de données
 
-4 tables dans Supabase, toutes protégées par RLS (`auth.uid() = user_id`) :
+6 tables dans Supabase, toutes protégées par RLS (`auth.uid() = user_id`) :
 
 - **`company_settings`** — 1 ligne par utilisateur (upsert sur `user_id`)
 - **`customers`** — clients de l'utilisateur
 - **`invoices`** — factures (id = chaîne type `INV-021`)
 - **`invoice_items`** — lignes de facture (FK → `invoices.id` ON DELETE CASCADE)
+- **`quotes`** — devis (id = chaîne type `DEV-001`), avec `converted_to_invoice_id` pour tracer la conversion
+- **`quote_items`** — lignes de devis (FK → `quotes.id` ON DELETE CASCADE)
+- **`payments`** — paiements partiels (FK → `invoices.id` ON DELETE CASCADE), montants en entiers FCFA
 
-Migration complète : `supabase/migrations/001_initial_schema.sql`
+Migrations :
+- `supabase/migrations/001_initial_schema.sql` — schéma initial
+- `supabase/migrations/002_add_tax_label.sql` — colonne `tax_label` sur `invoices`
+- `supabase/migrations/003_add_quotes.sql` — tables `quotes` + `quote_items` + RLS
+- `supabase/migrations/004_add_payments.sql` — table `payments` + RLS
 
-### Numérotation des factures
+### Numérotation des factures et devis
 
-`nextInvoiceNumber()` interroge la table `invoices` pour trouver le dernier numéro séquentiel et incrémente. Résistant aux suppressions (ne réutilise pas un numéro supprimé).
+- `nextInvoiceNumber()` — préfixe depuis `company_settings.invoice_prefix` (ex. `INV-`) + compteur résistant aux suppressions
+- Les devis utilisent le même préfixe avec `INV-` remplacé par `DEV-` (ex. `DEV-001`)
+
+### Export PDF natif
+
+Route API `GET /api/invoices/[id]/pdf` (runtime Node.js) :
+1. Authentifie l'utilisateur via Supabase
+2. Récupère la facture + les paramètres entreprise
+3. Génère le PDF avec `@react-pdf/renderer` (`renderToBuffer`)
+4. Retourne le fichier avec `Content-Type: application/pdf`
+
+Le template PDF est dans `src/lib/pdf/invoice-pdf.tsx`. Utilise les polices built-in de `@react-pdf/renderer` (Helvetica, Courier). `next.config.mjs` inclut `transpilePackages: ['@react-pdf/renderer']`.
+
+### Envoi d'email
+
+`sendInvoiceEmail(invoiceId)` dans `src/lib/actions/email.ts` :
+1. Vérifie que `RESEND_API_KEY` est définie
+2. Génère le PDF via `renderToBuffer`
+3. Compose l'email HTML via `invoiceEmailHtml()` de `src/lib/email/invoice-email.tsx`
+4. Envoie via `resend.emails.send()` avec le PDF en pièce jointe
+5. Retourne `{ success: boolean, error?: string }`
+
+Le bouton "Email" n'apparaît sur la facture que si `invoice.customerEmail` est renseigné.
+
+### Gestion des devis
+
+Workflow complet : Brouillon → Envoyé → Accepté/Refusé/Expiré → (Converti en facture)
+
+`convertQuoteToInvoice(quoteId)` :
+1. Crée une facture avec les mêmes lignes et montants
+2. Date = aujourd'hui, échéance = aujourd'hui + `paymentTerms` jours
+3. Met à jour le devis : `status = 'accepted'`, `converted_to_invoice_id = invoice.id`
+4. Redirige vers la nouvelle facture
+
+### Paiements partiels
+
+`addPayment()` :
+1. Insère le paiement
+2. Recalcule le total payé sur toutes les factures
+3. Met automatiquement la facture à `'paid'` si `totalPaid >= invoice.amount`, sinon `'sent'`
+
+`deletePayment()` fait le chemin inverse : repasse à `'sent'` si la facture n'est plus soldée.
+
+### Internationalisation (i18n)
+
+- Contexte React `I18nProvider` wrappé dans `src/app/layout.tsx`
+- Hook `useI18n()` retourne `{ locale, t, setLocale }`
+- Préférence sauvegardée dans `localStorage` (clé `moufacture_locale`)
+- Sélecteur FR/EN dans la sidebar (boutons)
+- Les traductions couvrent : nav, dashboard, factures, devis, clients, paramètres, paiements, commun
 
 ### Auth (`src/app/auth/`)
 
@@ -117,16 +183,20 @@ Rafraîchit la session Supabase sur chaque requête et redirige vers `/auth/logi
 |---|---|
 | `/` | Dashboard : KPI cards + graphique 6 mois glissants + accès rapide animé |
 | `/invoices` | Liste avec filtres par statut (tabs) + recherche |
-| `/invoices/new` | Formulaire : dropdown client, lignes dynamiques, TVA éditable, bouton "Enregistrer" → sauvegarde + redirige vers `/invoices/[id]?print=true` |
-| `/invoices/[id]` | Vue propre + boutons changement de statut + mode édition inline. Si `?print=true` en URL, déclenche `window.print()` après 600 ms, puis `router.replace` pour nettoyer l'URL |
+| `/invoices/new` | Formulaire : dropdown client, lignes dynamiques, type de taxe (TVA/TPS/Exonéré/CSS/Personnalisée), numéro éditable |
+| `/invoices/[id]` | Vue propre + boutons : PDF (téléchargement), Email (si client a un email), Imprimer, Modifier, Supprimer + section paiements partiels |
+| `/quotes` | Liste des devis avec filtres par statut + recherche + bouton "Convertir en facture" |
+| `/quotes/new` | Formulaire devis : identique à facture mais avec date d'expiration |
+| `/quotes/[id]` | Vue devis + changement de statut + édition + bouton "Convertir en facture" → redirige vers la facture créée |
 | `/customers` | Grille de cards. Bouton "Nouveau client" → page dédiée. Édition via modal |
 | `/customers/new` | Page formulaire complet avec aperçu d'avatar en temps réel |
 | `/settings` | Paramètres entreprise + facturation (TVA, préfixe, délai paiement) |
+| `/api/invoices/[id]/pdf` | Route API Node.js — génère et retourne le PDF de la facture |
 
 ### Composants layout (`src/components/layout/`)
 
 - `DashboardLayout` — wrapper commun : gère `sidebarOpen` (mobile), passe les props à `Sidebar` et `Header`
-- `Sidebar` — navigation fixe desktop / drawer mobile avec `usePathname()` pour le lien actif
+- `Sidebar` — navigation fixe desktop / drawer mobile avec `usePathname()` pour le lien actif + sélecteur de langue FR/EN + labels traduits via `useI18n()`
 - `Header` — hamburger mobile, barre de recherche desktop, bouton déconnexion (`supabase.auth.signOut()` → `/auth/login`)
 
 ### Composants UI (`src/components/ui/`)
@@ -148,18 +218,24 @@ Utilisées sur le dashboard avec `style={{ animationDelay: '${n}ms' }}` pour l'e
 
 - **Pas de Radix UI pour Tabs/Avatar/Modal** — bundle plus léger, composants suffisamment simples pour être réécrits
 - **`'use client'` sur toutes les pages interactives** — nécessaire pour les formulaires, filtres et états d'édition
-- **Données client copiées sur la facture** — `customerName`, `customerCompany`, `customerEmail`, etc. sont snapshot au moment de la création. Modifier/supprimer un client n'affecte pas les factures existantes
-- **PDF via `window.print()`** — pas de lib externe ; le navigateur gère "Enregistrer en PDF"
+- **Données client copiées sur la facture/devis** — `customerName`, `customerCompany`, etc. sont snapshot au moment de la création. Modifier/supprimer un client n'affecte pas les documents existants
+- **PDF via `@react-pdf/renderer`** — génération serveur via route API, pas de lib browser ; `transpilePackages` requis dans `next.config.mjs`
+- **Email via Resend** — PDF généré à la volée et joint à l'email ; `RESEND_API_KEY` requis en variable d'environnement
 - **Formatage monétaire** — toujours via `Intl.NumberFormat('fr-FR', { currency: 'XOF' })`, jamais manuellement
-- **Stats clients calculées en JS** — deux requêtes séparées (customers + invoices), agrégation côté serveur dans la Server Action (pas de `GROUP BY` Supabase JS non standard)
+- **Stats clients calculées en JS** — deux requêtes séparées (customers + invoices), agrégation côté serveur dans la Server Action
+- **i18n sans routing** — contexte React + localStorage, pas de segment `[locale]` dans l'URL pour éviter un refactoring lourd
+- **Paiements partiels** — recalcul du statut facture côté serveur à chaque ajout/suppression de paiement
 
 ## Instructions pour un futur modèle IA
 
 - Toujours utiliser `formatCurrency()` et `formatDate()` de `src/lib/formatters.ts` pour afficher les montants et dates
 - Pour ajouter une nouvelle entité, créer une Server Action dans `src/lib/actions/` avec vérification `auth.getUser()`, et une migration SQL dans `supabase/migrations/`
 - Les montants sont toujours stockés en **entiers FCFA** — utiliser `Math.round()` avant stockage
-- Le taux de TVA est stocké dans `CompanySettings.taxRate` (défaut global) ET dans chaque `Invoice.taxRate` (valeur figée à la création)
+- Le taux de TVA est stocké dans `CompanySettings.taxRate` (défaut global) ET dans chaque `Invoice.taxRate` / `Quote.taxRate` (valeur figée à la création)
 - Ne pas installer Radix UI pour de nouveaux composants simples — implémenter en CSS/React pur
 - Ne jamais utiliser `src/lib/store.ts` ou `src/lib/mock-data.ts` — ces fichiers ont été supprimés
 - Le déploiement est sur **Vercel** (https://tchaafacture.vercel.app) via push automatique sur la branche `master`
 - Projet Supabase : ref `rbefcjhfzwreoqtjbols`, région `eu-west-2` (London)
+- Pour les nouvelles traductions, ajouter les clés dans `src/lib/i18n/translations.ts` pour les deux locales (`fr` et `en`)
+- La route PDF utilise `export const runtime = 'nodejs'` — ne pas la basculer en edge runtime
+- `sendInvoiceEmail` retourne `{ success, error? }` — toujours vérifier `result.success` côté client avant d'afficher un message

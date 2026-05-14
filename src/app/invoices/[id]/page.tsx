@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Pencil, Trash2, Save, Send, Plus, Printer } from 'lucide-react'
+import { ArrowLeft, Pencil, Trash2, Save, Send, Plus, Printer, Download, Mail } from 'lucide-react'
 import Link from 'next/link'
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
@@ -12,10 +12,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { getInvoice, updateInvoice, updateInvoiceStatus, deleteInvoice } from '@/lib/actions/invoices'
+import { sendInvoiceEmail } from '@/lib/actions/email'
+import { getPayments, addPayment, deletePayment } from '@/lib/actions/payments'
 import { getCustomers } from '@/lib/actions/customers'
 import { getSettings } from '@/lib/actions/settings'
 import { formatCurrency, formatDate } from '@/lib/formatters'
-import type { Invoice, InvoiceStatus, InvoiceItem, Customer, CompanySettings } from '@/lib/types'
+import type { Invoice, InvoiceStatus, InvoiceItem, Customer, CompanySettings, Payment } from '@/lib/types'
 
 const statusVariant: Record<InvoiceStatus, 'outline' | 'secondary' | 'success' | 'danger'> = {
   draft: 'outline', sent: 'secondary', paid: 'success', overdue: 'danger',
@@ -37,6 +39,14 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const [notFound, setNotFound] = useState(false)
 
   const [editing, setEditing] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [payments, setPayments] = useState<Payment[]>([])
+  const [showPaymentForm, setShowPaymentForm] = useState(false)
+  const [payAmount, setPayAmount] = useState('')
+  const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0])
+  const [payMethod, setPayMethod] = useState('')
+  const [payRef, setPayRef] = useState('')
+  const [savingPayment, setSavingPayment] = useState(false)
   const [customerId, setCustomerId] = useState('')
   const [date, setDate] = useState('')
   const [dueDate, setDueDate] = useState('')
@@ -44,11 +54,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const [lines, setLines] = useState<LineItem[]>([])
 
   useEffect(() => {
-    Promise.all([getInvoice(params.id), getCustomers(), getSettings()]).then(([inv, c, s]) => {
+    Promise.all([getInvoice(params.id), getCustomers(), getSettings(), getPayments(params.id)]).then(([inv, c, s, p]) => {
       if (!inv) { setNotFound(true); return }
       setInvoice(inv)
       setCustomers(c)
       setSettings(s)
+      setPayments(p)
       if (searchParams.get('edit') === 'true') startEditWith(inv)
     }).catch(console.error)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -128,6 +139,46 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     setInvoice({ ...invoice, status })
   }
 
+  const totalPaid = payments.reduce((s, p) => s + p.amount, 0)
+  const amountDue = invoice ? invoice.amount - totalPaid : 0
+
+  const handleAddPayment = async () => {
+    if (!invoice) return
+    const amount = Math.round(Number(payAmount))
+    if (!amount || amount <= 0) { alert('Montant invalide.'); return }
+    setSavingPayment(true)
+    const newPayment = await addPayment(invoice.id, { amount, date: payDate, method: payMethod, reference: payRef, notes: '' })
+    setPayments((prev) => [...prev, newPayment])
+    if (totalPaid + amount >= invoice.amount) setInvoice({ ...invoice, status: 'paid' })
+    setPayAmount('')
+    setPayRef('')
+    setPayMethod('')
+    setShowPaymentForm(false)
+    setSavingPayment(false)
+  }
+
+  const handleDeletePayment = async (paymentId: string) => {
+    if (!invoice) return
+    if (!confirm('Supprimer ce paiement ?')) return
+    await deletePayment(paymentId, invoice.id)
+    const remaining = payments.filter((p) => p.id !== paymentId)
+    setPayments(remaining)
+    const newTotal = remaining.reduce((s, p) => s + p.amount, 0)
+    if (invoice.status === 'paid' && newTotal < invoice.amount) setInvoice({ ...invoice, status: 'sent' })
+  }
+
+  const handleSendEmail = async () => {
+    if (!invoice) return
+    setSending(true)
+    const result = await sendInvoiceEmail(invoice.id)
+    setSending(false)
+    if (result.success) {
+      alert('Email envoyé avec succès !')
+    } else {
+      alert(`Erreur : ${result.error}`)
+    }
+  }
+
   const handleDelete = async () => {
     if (!invoice) return
     if (!confirm('Supprimer définitivement cette facture ?')) return
@@ -178,6 +229,16 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           <div className="flex flex-wrap gap-2">
             {!editing ? (
               <>
+                <Button variant="outline" size="sm" asChild>
+                  <a href={`/api/invoices/${invoice.id}/pdf`} download>
+                    <Download className="mr-2 h-4 w-4" />PDF
+                  </a>
+                </Button>
+                {invoice.customerEmail && (
+                  <Button variant="outline" size="sm" onClick={handleSendEmail} disabled={sending}>
+                    <Mail className="mr-2 h-4 w-4" />{sending ? 'Envoi…' : 'Email'}
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" onClick={() => window.print()}>
                   <Printer className="mr-2 h-4 w-4" />Imprimer
                 </Button>
@@ -221,6 +282,78 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                   </button>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!editing && (
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold">Paiements reçus</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatCurrency(totalPaid)} payé · {amountDue > 0 ? `${formatCurrency(amountDue)} restant` : 'Soldé'}
+                  </p>
+                </div>
+                {amountDue > 0 && (
+                  <Button size="sm" variant="outline" onClick={() => setShowPaymentForm((v) => !v)}>
+                    <Plus className="mr-2 h-4 w-4" />Ajouter un paiement
+                  </Button>
+                )}
+              </div>
+
+              {payments.length > 0 && (
+                <div className="divide-y rounded-lg border text-sm">
+                  {payments.map((p) => (
+                    <div key={p.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                      <div>
+                        <span className="font-semibold">{formatCurrency(p.amount)}</span>
+                        {p.method && <span className="ml-2 text-muted-foreground">· {p.method}</span>}
+                        {p.reference && <span className="ml-1 text-muted-foreground">#{p.reference}</span>}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-muted-foreground">{formatDate(p.date)}</span>
+                        <button onClick={() => handleDeletePayment(p.id)} className="text-red-400 hover:text-red-600">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {showPaymentForm && (
+                <div className="grid grid-cols-2 gap-3 rounded-lg border p-4 sm:grid-cols-4">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium">Montant (FCFA)</label>
+                    <Input type="number" min="0" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium">Date</label>
+                    <Input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium">Mode</label>
+                    <select value={payMethod} onChange={(e) => setPayMethod(e.target.value)}
+                      className="flex h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      <option value="">—</option>
+                      <option>Virement</option><option>Espèces</option>
+                      <option>Mobile Money</option><option>Chèque</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium">Référence</label>
+                    <Input value={payRef} onChange={(e) => setPayRef(e.target.value)} placeholder="ex. REF-001" />
+                  </div>
+                  <div className="col-span-2 flex gap-2 sm:col-span-4">
+                    <Button size="sm" onClick={handleAddPayment} disabled={savingPayment}>
+                      {savingPayment ? 'Enregistrement…' : 'Enregistrer le paiement'}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setShowPaymentForm(false)}>Annuler</Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

@@ -143,7 +143,7 @@ export async function createInvoice(invoice: Omit<Invoice, 'id'> & { id?: string
   }
 
   revalidatePath('/invoices')
-  revalidatePath('/')
+  revalidatePath('/dashboard')
   return rowToInvoice(row, items)
 }
 
@@ -196,7 +196,7 @@ export async function updateInvoice(invoice: Invoice): Promise<void> {
 
   revalidatePath('/invoices')
   revalidatePath(`/invoices/${invoice.id}`)
-  revalidatePath('/')
+  revalidatePath('/dashboard')
 }
 
 export async function updateInvoiceStatus(id: string, status: InvoiceStatus): Promise<void> {
@@ -215,7 +215,7 @@ export async function updateInvoiceStatus(id: string, status: InvoiceStatus): Pr
   if (error) throw new Error(error.message)
   revalidatePath('/invoices')
   revalidatePath(`/invoices/${id}`)
-  revalidatePath('/')
+  revalidatePath('/dashboard')
 }
 
 export async function deleteInvoice(id: string): Promise<void> {
@@ -233,5 +233,5 @@ export async function deleteInvoice(id: string): Promise<void> {
 
   if (error) throw new Error(error.message)
   revalidatePath('/invoices')
-  revalidatePath('/')
+  revalidatePath('/dashboard')
 }

@@ -3,15 +3,20 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, FileText, Users, Settings, X, LogOut } from 'lucide-react'
+import { LayoutDashboard, FileText, Users, Settings, X, LogOut, ClipboardList } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { useI18n } from '@/lib/i18n/context'
 
-const navItems = [
-  { href: '/', label: 'Tableau de bord', icon: LayoutDashboard },
-  { href: '/invoices', label: 'Factures', icon: FileText },
-  { href: '/customers', label: 'Clients', icon: Users },
-]
+function useNavItems() {
+  const { t } = useI18n()
+  return [
+    { href: '/dashboard', label: t.nav.dashboard, icon: LayoutDashboard },
+    { href: '/invoices', label: t.nav.invoices, icon: FileText },
+    { href: '/quotes', label: t.nav.quotes, icon: ClipboardList },
+    { href: '/customers', label: t.nav.customers, icon: Users },
+  ]
+}
 
 interface SidebarProps {
   isOpen?: boolean
@@ -22,6 +27,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [email, setEmail] = useState('')
+  const { locale, setLocale, t } = useI18n()
+  const navItems = useNavItems()
 
   useEffect(() => {
     createClient()
@@ -31,8 +38,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const initials = email ? email.slice(0, 2).toUpperCase() : '…'
 
-  const isActive = (href: string) =>
-    href === '/' ? pathname === '/' : pathname.startsWith(href)
+  const isActive = (href: string) => pathname.startsWith(href)
 
   const handleSignOut = async () => {
     await createClient().auth.signOut()
@@ -97,8 +103,26 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           )}
         >
           <Settings className="h-4 w-4 shrink-0" />
-          Paramètres
+          {t.nav.settings}
         </Link>
+
+        {/* Sélecteur de langue */}
+        <div className="flex items-center gap-1 rounded-lg px-3 py-1.5">
+          <button
+            onClick={() => setLocale('fr')}
+            className={cn(
+              'rounded px-2 py-1 text-xs font-semibold transition-colors',
+              locale === 'fr' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >FR</button>
+          <button
+            onClick={() => setLocale('en')}
+            className={cn(
+              'rounded px-2 py-1 text-xs font-semibold transition-colors',
+              locale === 'en' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >EN</button>
+        </div>
 
         {/* User identity */}
         <div className="flex items-center gap-3 rounded-lg px-3 py-2.5">
@@ -110,7 +134,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
           <button
             onClick={handleSignOut}
-            title="Se déconnecter"
+            title={t.common.signOut}
             className="shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
           >
             <LogOut className="h-4 w-4" />
