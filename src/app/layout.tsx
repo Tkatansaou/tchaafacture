@@ -14,8 +14,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "tchaaFacture — Gestion de factures",
-  description: "Gérez vos factures et clients en toute simplicité avec tchaaFacture.",
+  title: "mouFacture — Gestion de factures",
+  description: "Gérez vos factures et clients en toute simplicité avec mouFacture.",
 };
 
 export default function RootLayout({

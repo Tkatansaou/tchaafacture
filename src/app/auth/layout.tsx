@@ -19,9 +19,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         {/* Logo */}
         <div className="relative z-10 flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
-            <span className="text-lg font-black leading-none">T</span>
+            <span className="text-lg font-black leading-none">M</span>
           </div>
-          <span className="text-2xl font-bold tracking-tight">tchaaFacture</span>
+          <span className="text-2xl font-bold tracking-tight">mouFacture</span>
         </div>
 
         {/* Hero copy */}
@@ -49,7 +49,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
         <div className="relative z-10">
           <p className="text-xs text-blue-400">
-            © {new Date().getFullYear()} tchaaFacture · Fait avec ❤️ pour les PME africaines
+            © {new Date().getFullYear()} mouFacture · Fait avec ❤️ pour les PME africaines
           </p>
         </div>
       </div>
@@ -60,9 +60,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="mb-8 text-center lg:hidden">
           <div className="inline-flex items-center gap-2 mb-1">
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <span className="text-sm font-black">T</span>
+              <span className="text-sm font-black">M</span>
             </div>
-            <span className="text-xl font-bold text-foreground">tchaaFacture</span>
+            <span className="text-xl font-bold text-foreground">mouFacture</span>
           </div>
           <p className="text-sm text-muted-foreground">Gestion de facturation simplifiée</p>
         </div>

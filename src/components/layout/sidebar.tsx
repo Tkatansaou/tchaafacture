@@ -52,9 +52,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       <div className="flex items-center justify-between px-5 py-4 border-b">
         <div className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <span className="text-sm font-black">T</span>
+            <span className="text-sm font-black">M</span>
           </div>
-          <span className="text-lg font-bold tracking-tight">tchaaFacture</span>
+          <span className="text-lg font-bold tracking-tight">mouFacture</span>
         </div>
         <button
           onClick={onClose}

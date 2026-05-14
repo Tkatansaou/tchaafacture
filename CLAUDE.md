@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Ce que fait l'application
 
-**tchaaFacture** est un SaaS de facturation en ligne destiné aux PME d'Afrique de l'Ouest. Il permet de créer et gérer des factures, des clients, et de suivre les revenus via un tableau de bord. C'est une application **full-stack multi-tenant** : chaque utilisateur a ses propres données, isolées par Row Level Security dans Supabase. La devise principale est le Franc CFA (XOF).
+**mouFacture** est un SaaS de facturation en ligne destiné aux PME d'Afrique de l'Ouest. Il permet de créer et gérer des factures, des clients, et de suivre les revenus via un tableau de bord. C'est une application **full-stack multi-tenant** : chaque utilisateur a ses propres données, isolées par Row Level Security dans Supabase. La devise principale est le Franc CFA (XOF).
 
 ## Commandes
 
