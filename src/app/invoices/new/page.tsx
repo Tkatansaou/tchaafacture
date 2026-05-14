@@ -67,7 +67,7 @@ export default function NewInvoicePage() {
         setCustomers(c)
         setDueDate(addDays(today(), s.paymentTerms || 30))
         const rate = s.taxRate || 18
-        const matched = TAX_OPTIONS.find(o => o.rate === rate && o.key !== 'custom')
+        const matched = TAX_OPTIONS.find(o => o.rate === rate)
         if (matched) {
           setTaxKey(matched.key)
           setTaxLabel(matched.label)
